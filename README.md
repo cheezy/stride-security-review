@@ -1,10 +1,10 @@
 # security-review
 
-AI-powered security review of code changes, delivered as a Claude Code plugin.
+**AI-powered security review of code changes as a Claude Code plugin.**
 
-Provides the `/security-review` slash command. Backed by a dedicated `security-reviewer` agent that analyzes diffs for vulnerability classes including injection, authentication and authorization flaws, data exposure, cryptographic weaknesses, input validation gaps, race conditions, XSS/code execution, and insecure configuration — while filtering out low-impact noise (denial-of-service, rate-limiting, memory-exhaustion concerns).
+Run a single slash command — `/security-review` — to get a structured, severity-graded list of security findings on whatever you've changed. Powered by a dedicated `security-reviewer` agent that uses semantic analysis, not pattern matching, and filters out low-impact noise so the findings you see are the ones worth acting on.
 
-Loosely based on [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review).
+Loosely inspired by [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review). Where that project ships a GitHub Action for PR review, this plugin brings the same idea into the interactive Claude Code session so you can run the review *before* the PR exists.
 
 ## Installation
 
@@ -13,19 +13,117 @@ Loosely based on [anthropics/claude-code-security-review](https://github.com/ant
 /plugin install security-review@stride-marketplace
 ```
 
+The plugin auto-discovers the slash command, the agent, and the skill on install. No further configuration needed.
+
 ## Quick start
 
-In a Claude Code session inside any git repository:
+In any git repository, run:
 
+```text
+/security-review                  # all working-tree changes (staged + unstaged) vs HEAD
+/security-review lib/auth.ex      # scope to one file
+/security-review lib/ test/       # scope to directories
+/security-review --json           # raw JSON output for piping into tools
+/security-review --json lib/foo   # path-scoped, raw JSON
 ```
-/security-review
+
+Sample output for a small diff with one finding:
+
+```text
+Security review — 1 finding across 2 files
+Critical: 0   High: 1   Medium: 0   Low: 0   Info: 0
+
+## High
+
+**[injection]** lib/users.ex:42 — confidence: high
+User-supplied `username` parameter is concatenated directly into a SQL string at the call to
+Repo.query/2 below. The trust boundary is the HTTP request handler at line 38, and the sink is
+the raw query string passed to Postgres — classic SQL injection. Worst-case outcome is
+full-table read for any user with credentials to reach this endpoint.
+
+Fix: Use Ecto's parameterized query API. Replace the string-concatenated query with
+Repo.query("SELECT * FROM users WHERE username = $1", [username]) so user input is bound as a
+parameter rather than interpolated into the SQL text.
 ```
 
-Reviews the current git diff and prints findings grouped by severity.
+## What it catches
 
-## Status
+The `security-reviewer` agent (see [`agents/security-reviewer.md`](agents/security-reviewer.md)) reviews diffs across these vulnerability classes:
 
-Scaffold release. Full agent prompt, slash command, supporting skill, and fixture suite land in subsequent tasks under goal G91.
+| Class | Examples |
+|---|---|
+| Injection | SQL, command, LDAP, NoSQL, XXE, template, header |
+| Authentication | Missing auth check, timing-vulnerable comparison, weak password requirements |
+| Authorization | IDOR, privilege escalation through parameter tampering, trusting client roles |
+| Data exposure | Hardcoded secrets, secrets in logs, PII in error responses, sensitive data over plaintext |
+| Cryptography | MD5/SHA1 for passwords, ECB mode, static IVs, predictable RNG for tokens |
+| Input validation | Path traversal, SSRF, open redirect, zip-bomb decompression, trusting client validation |
+| Race conditions | Filesystem TOCTOU, unlocked read-modify-write on security-sensitive state, symlink races |
+| XSS / code execution | DOM/reflected/stored XSS, SSTI, deserialization of untrusted data |
+| Insecure configuration | CORS `*` with credentials, disabled CSRF, debug mode in prod, missing security headers, disabled cert verification |
+
+The agent uses **semantic analysis**: a `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. The analysis methodology, severity rubric, and JSON output schema live in the agent prompt.
+
+## What it deliberately ignores
+
+To keep signal-to-noise high, the agent suppresses findings whose only impact is:
+
+- **Denial-of-service** that is not also a data-integrity or confidentiality issue.
+- **Rate limiting** as a general concern — unless its absence is on a credential or token-generation endpoint (which falls under Authentication).
+- **Memory exhaustion** unless it enables another vulnerability class.
+- **Hypothetical risks** not realizable through the changed code.
+- **Code style** disguised as security concerns.
+
+If your organization needs those classes flagged, see [Customization](#customization) — extend the agent prompt rather than working around the filter.
+
+## Output schema
+
+The agent always returns a single fenced ```json document conforming to:
+
+```json
+{
+  "findings": [
+    {
+      "severity": "critical | high | medium | low | info",
+      "file": "path/relative/to/repo/root.ext",
+      "line": 42,
+      "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config",
+      "description": "What and why",
+      "remediation": "Specific fix",
+      "confidence": "high | medium | low"
+    }
+  ],
+  "summary": {
+    "files_reviewed": 7,
+    "findings_by_severity": {"critical": 0, "high": 1, "medium": 2, "low": 0, "info": 0}
+  }
+}
+```
+
+The `--json` flag prints this document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it.
+
+## Customization
+
+Two customization knobs at v1.0:
+
+1. **Scope by path.** Pass paths as arguments to limit the review to a subset of changed files. Useful in monorepos.
+2. **Extend the agent prompt.** Fork or patch [`agents/security-reviewer.md`](agents/security-reviewer.md) to add organization-specific vulnerability classes or to tighten/loosen the false-positive filter. **Keep the output schema stable** so downstream tooling continues to parse correctly.
+
+The skill at [`skills/security-review-essentials/SKILL.md`](skills/security-review-essentials/SKILL.md) documents the *surface*; the agent prompt documents the *behavior*. Customize the agent prompt for behavior changes; customize the skill description for trigger-phrase tuning.
+
+## Composing with other plugins
+
+The `--json` flag makes `/security-review` pipeable. Examples:
+
+- A Stride completion hook can run `/security-review --json` and refuse to mark a task `done` if a critical finding is present.
+- A CI gate can call the agent directly (without the slash command) by importing the agent prompt and feeding it a diff from `git diff origin/main`.
+- A dashboard can ingest the JSON across many runs and chart the per-class trend.
+
+The agent does not call any external service, so composition is safe in repos with sensitive content.
+
+## Contributing
+
+Issues and PRs welcome at <https://github.com/cheezy/security-review>. For prompt or filter changes, please include a smoke-test diff and the expected finding in your PR description so reviewers can verify the change does what you say.
 
 ## License
 
