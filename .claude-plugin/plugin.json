@@ -1,0 +1,13 @@
+{
+  "name": "security-review",
+  "description": "AI-powered security review for code changes via the /security-review slash command. Loosely based on anthropics/claude-code-security-review.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Jeff Morgan",
+    "email": "cheezy@letstango.ca"
+  },
+  "homepage": "https://github.com/cheezy/security-review",
+  "repository": "https://github.com/cheezy/security-review",
+  "license": "MIT",
+  "keywords": ["security", "code-review", "claude-code", "ai-agents"]
+}
