@@ -4,8 +4,6 @@
 
 Run a single slash command — `/security-review` — to get a structured, severity-graded list of security findings on whatever you've changed. Powered by a dedicated `security-reviewer` agent that uses semantic analysis, not pattern matching, and filters out low-impact noise so the findings you see are the ones worth acting on.
 
-Loosely inspired by [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review). Where that project ships a GitHub Action for PR review, this plugin brings the same idea into the interactive Claude Code session so you can run the review *before* the PR exists.
-
 ## Installation
 
 ```bash
