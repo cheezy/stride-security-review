@@ -4,10 +4,22 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 
 ## Fixtures
 
+### Universal vulnerability classes
+
 - [ ] `sql_injection.py` → injection (critical), `cwe: ["CWE-89"]`, `owasp: ["A03:2021"]` — string-concatenated SQL query with HTTP-supplied `username`.
 - [ ] `hardcoded_secret.js` → data_exposure (critical), `cwe: ["CWE-798"]`, `owasp: ["A07:2021"]` — Stripe-shaped secret key literal committed to source.
 - [ ] `weak_crypto.ex` → crypto (high), `cwe: ["CWE-327"]`, `owasp: ["A02:2021"]` — MD5 used (unsalted) for password hashing.
 - [ ] `command_injection.rb` → injection (critical), `cwe: ["CWE-78"]`, `owasp: ["A03:2021"]` — HTTP-supplied `filename` interpolated unescaped into a shell command.
+
+### Agentic vulnerability classes (require file to import an LLM/agent/MCP SDK)
+
+- [ ] `prompt_injection.py` → prompt_injection (critical), `cwe: ["CWE-1427"]`, `owasp: ["A03:2021"]` — Flask handler concatenates HTTP-supplied `question` directly into an OpenAI chat-completions message body. Python ecosystem coverage.
+- [ ] `prompt_injection.ts` → prompt_injection (critical), `cwe: ["CWE-1427"]`, `owasp: ["A03:2021"]` — Express handler concatenates HTTP-supplied `q` into an Anthropic Messages prompt. TypeScript ecosystem coverage — same shape, different ecosystem.
+- [ ] `tool_abuse.py` → tool_abuse (critical), `cwe: ["CWE-78", "CWE-22"]`, `owasp: ["A01:2021"]` — LangChain agent exposes unrestricted `run_shell` and `read_file` tools to the LLM with no auth, validation, or confirmation gate.
+- [ ] `tool_abuse.ts` → tool_abuse (critical), `cwe: ["CWE-22"]`, `owasp: ["A01:2021"]` — MCP server exposes `write_file` / `delete_file` tools accepting arbitrary paths from LLM clients. TypeScript / @modelcontextprotocol/sdk coverage.
+- [ ] `vector_store_poisoning.go` → vector_store_poisoning (high), `cwe: ["CWE-915"]`, `owasp: ["A08:2021"]` — HTTP handler embeds user-supplied comment text directly into pgvector without sanitization or source attribution. Go ecosystem coverage.
+- [ ] `model_output_execution.py` → model_output_execution (critical), `cwe: ["CWE-95", "CWE-94"]`, `owasp: ["A03:2021"]` — OpenAI chat-completion response passed directly to `exec()` with no AST check, no sandbox, no allow-list. Python ecosystem coverage.
+- [ ] `agent_trust_boundary.ts` → agent_trust_boundary (high), `cwe: ["CWE-1427"]`, `owasp: ["A04:2021"]` — researcher-agent output piped into writer-agent prompt with no delimiter, no integrity check, no quarantine. TypeScript / @anthropic-ai/sdk coverage.
 
 ## How to run the smoke test
 
@@ -35,25 +47,33 @@ This scopes `git ls-files` to `test/fixtures/`, applies the binary and 256 KiB f
 
 ### Expected enumeration result
 
-`git ls-files test/fixtures/` produces five tracked files: the four fixtures plus `EXPECTED.md`. All five are text files comfortably under 256 KiB, so all five survive the binary and size filters and are handed to the agent. The agent's `summary.files_reviewed` count should equal **5** in this scenario.
+`git ls-files test/fixtures/` produces twelve tracked files: four universal-class fixtures, seven agentic-class fixtures across Python/TypeScript/Go, plus `EXPECTED.md`. All twelve are text files comfortably under 256 KiB, so all twelve survive the binary and size filters and are handed to the agent. The agent's `summary.files_reviewed` count should equal **12** in this scenario.
 
 ### Expected per-file findings
 
 | Fixture | Severity | vulnerability_class | cwe | owasp | One-line rationale |
 |---|---|---|---|---|---|
-| `sql_injection.py` | critical | `injection` | `["CWE-89"]` | `["A03:2021"]` | HTTP-supplied `username` concatenated into a raw SQL query — same finding as diff mode. |
-| `hardcoded_secret.js` | critical | `data_exposure` | `["CWE-798"]` | `["A07:2021"]` | Stripe-shaped secret key literal committed to source — same finding as diff mode. |
-| `weak_crypto.ex` | high | `crypto` | `["CWE-327"]` | `["A02:2021"]` | MD5 (unsalted) used for password hashing — same finding as diff mode. |
-| `command_injection.rb` | critical | `injection` | `["CWE-78"]` | `["A03:2021"]` | HTTP-supplied `filename` interpolated unescaped into a shell command — same finding as diff mode. |
-| `EXPECTED.md` | — | — | — | — | **Negative case:** documentation file. The agent must NOT produce a finding here. Markdown is text, so it passes the binary filter; but the file contains no executable code at a trust boundary. |
+| `sql_injection.py` | critical | `injection` | `["CWE-89"]` | `["A03:2021"]` | HTTP-supplied `username` concatenated into a raw SQL query. |
+| `hardcoded_secret.js` | critical | `data_exposure` | `["CWE-798"]` | `["A07:2021"]` | Stripe-shaped secret key literal committed to source. |
+| `weak_crypto.ex` | high | `crypto` | `["CWE-327"]` | `["A02:2021"]` | MD5 (unsalted) used for password hashing. |
+| `command_injection.rb` | critical | `injection` | `["CWE-78"]` | `["A03:2021"]` | HTTP-supplied `filename` interpolated unescaped into a shell command. |
+| `prompt_injection.py` | critical | `prompt_injection` | `["CWE-1427"]` | `["A03:2021"]` | Flask + OpenAI: user `question` concatenated into chat-completions prompt. |
+| `prompt_injection.ts` | critical | `prompt_injection` | `["CWE-1427"]` | `["A03:2021"]` | Express + Anthropic: user `q` concatenated into Messages prompt. |
+| `tool_abuse.py` | critical | `tool_abuse` | `["CWE-78", "CWE-22"]` | `["A01:2021"]` | LangChain agent exposes shell + arbitrary file read tools. |
+| `tool_abuse.ts` | critical | `tool_abuse` | `["CWE-22"]` | `["A01:2021"]` | MCP server exposes write_file / delete_file with arbitrary paths. |
+| `vector_store_poisoning.go` | high | `vector_store_poisoning` | `["CWE-915"]` | `["A08:2021"]` | User comment embedded into pgvector without sanitization. |
+| `model_output_execution.py` | critical | `model_output_execution` | `["CWE-95", "CWE-94"]` | `["A03:2021"]` | OpenAI response passed directly to `exec()`. |
+| `agent_trust_boundary.ts` | high | `agent_trust_boundary` | `["CWE-1427"]` | `["A04:2021"]` | Researcher → writer agent pipe with no quarantine/delimiter. |
+| `EXPECTED.md` | — | — | — | — | **Negative case:** documentation file. The agent must NOT produce a finding here. |
 
 A passing full-scan smoke test:
 
-- `summary.files_reviewed` is exactly `5` (the four fixtures + this file).
-- `summary.findings_by_severity` totals `{"critical": 3, "high": 1, "medium": 0, "low": 0, "info": 0}` — the same four findings as diff mode.
+- `summary.files_reviewed` is exactly `12` (eleven fixtures + this file).
+- `summary.findings_by_severity` totals `{"critical": 7, "high": 4, "medium": 0, "low": 0, "info": 0}`.
 - No finding is reported on `EXPECTED.md`.
-- The human-readable header reads `Security review (full scan) — 4 findings across 5 files`.
-- The `--json` variant produces the same JSON document as diff mode for the four findings, with `summary.files_reviewed` raised to 5.
+- The human-readable header reads `Security review (full scan) — 11 findings across 12 files`.
+- The `--json` variant produces the same JSON document as diff mode for the eleven findings, with `summary.files_reviewed` raised to 12.
+- Each agentic fixture's finding sits under the matching `vulnerability_class` from the agent's "Agentic vulnerability classes" section.
 
 ### Regression checks specific to full mode
 
@@ -69,5 +89,7 @@ A passing full-scan smoke test:
 - **Wrong class:** the agent flags the issue but under a different `vulnerability_class`. Inspect the class taxonomy — did the enum change?
 - **Wrong severity:** the issue is found and classified correctly but the severity does not match. Inspect the severity guidance — did the rubric language change?
 - **Wrong or missing CWE/OWASP:** the agent reports the correct vulnerability_class but the `cwe` or `owasp` array doesn't match the expected per-fixture mapping. Inspect the agent prompt's "CWE and OWASP mapping requirements" subsection — was a CWE-ID dropped from the recognised list, or did a category mapping get inverted?
+- **Agentic class regression:** the agent flags a `prompt_injection` / `tool_abuse` / `agent_trust_boundary` / `model_output_execution` / `vector_store_poisoning` finding on a file that imports NO LLM/agent/MCP SDK (e.g. a plain Flask handler with no AI imports). The "Agentic vulnerability classes" section's import-signal gate has weakened. Conversely, if the agentic fixtures (e.g. `prompt_injection.py`) produce only the universal-class findings (`injection` instead of `prompt_injection`), the agentic-class enum or detection rubric has been dropped from the agent prompt.
+- **Cross-ecosystem coverage regression:** the agent detects a class only when the fixture is in one specific language (e.g. flags `prompt_injection.py` but misses `prompt_injection.ts`). The agentic rule is over-fit to a single ecosystem's SDK syntax — the per-language detection-signal list in the agent prompt has gone stale.
 
 A passing smoke test is: all four checkboxes can be filled, no other findings appear, and the JSON output parses cleanly.

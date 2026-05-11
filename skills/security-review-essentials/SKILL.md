@@ -62,7 +62,7 @@ The plugin supports two scan modes — pick the one that matches the question yo
 
 ## What the agent does
 
-The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin) receives the diff and returns a JSON document with one finding per vulnerability. Vulnerability classes covered: injection, authentication, authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, insecure configuration.
+The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin) receives the diff and returns a JSON document with one finding per vulnerability. Vulnerability classes covered: injection, authentication, authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, insecure configuration. For codebases that wire LLMs / AI agents / Model Context Protocol clients into the request flow, five additional MAESTRO-derived classes activate: prompt injection, tool abuse, agent trust boundary, model output execution, vector store poisoning. The agentic classes activate only when the file imports an LLM/agent/MCP SDK — see the "Agentic vulnerability classes" section in the agent prompt for the per-language detection signals.
 
 The agent operates on **semantic analysis, not pattern matching**. A `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. This is the agent's distinguishing property versus a static analyzer.
 

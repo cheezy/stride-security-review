@@ -68,6 +68,16 @@ The `security-reviewer` agent (see [`agents/security-reviewer.md`](agents/securi
 | XSS / code execution | DOM/reflected/stored XSS, SSTI, deserialization of untrusted data |
 | Insecure configuration | CORS `*` with credentials, disabled CSRF, debug mode in prod, missing security headers, disabled cert verification |
 
+For codebases that integrate LLMs, AI agents, or Model Context Protocol clients, five additional MAESTRO-derived classes activate (the file must import a recognized LLM/agent/MCP SDK in any language — Python, JavaScript/TypeScript, Go, Ruby, Elixir, Java/Kotlin all supported):
+
+| Class | Examples |
+|---|---|
+| Prompt injection | Untrusted text concatenated into an LLM prompt without separation; `messages=[{"role":"user","content": user_input}]` patterns; un-delimited RAG context |
+| Tool abuse | Agent function-call / MCP tool layer exposing file/shell/DB/HTTP/credential operations without per-tool authorization or input validation |
+| Agent trust boundary | Agent-to-agent (A2A) message passing where one agent's output flows into another's prompt without the receiver treating it as untrusted |
+| Model output execution | LLM response text flowing into `eval`, `exec`, `subprocess` with `shell=True`, `Function()`, `os/exec.Command`, or any code-execution sink |
+| Vector store poisoning | User-controllable content embedded into a vector DB (Pinecone, Weaviate, Chroma, pgvector, etc.) without sanitization or source attribution |
+
 The agent uses **semantic analysis**: a `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. The analysis methodology, severity rubric, and JSON output schema live in the agent prompt.
 
 ## What it deliberately ignores
