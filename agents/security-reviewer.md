@@ -68,6 +68,8 @@ Wrap your output in a single fenced ```json block. The JSON document MUST confor
       "file": "path/relative/to/repo/root.ext",
       "line": 42,
       "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config",
+      "cwe": ["CWE-89"],
+      "owasp": ["A03:2021"],
       "description": "One paragraph: what is the vulnerability, what is the trust boundary being crossed, and what is the realistic worst-case outcome.",
       "remediation": "One paragraph: the specific change that fixes it. Reference the library/function/pattern the codebase should use.",
       "confidence": "high | medium | low"
@@ -81,6 +83,15 @@ Wrap your output in a single fenced ```json block. The JSON document MUST confor
 ```
 
 If there are no findings, return `findings: []` and a populated `summary`. Do not invent findings to look busy. An empty findings list on a small, benign diff is the correct output.
+
+### CWE and OWASP mapping requirements
+
+Every finding MUST include both `cwe` and `owasp` as arrays of stable identifier strings. These let triagers group findings by class without re-reading prose and let downstream dashboards aggregate by canonical category.
+
+- `cwe` — one or more CWE-IDs in the form `"CWE-<digits>"` (e.g. `"CWE-89"` for SQL injection, `"CWE-78"` for OS command injection, `"CWE-79"` for XSS, `"CWE-327"` for broken/risky cryptography, `"CWE-798"` for hardcoded credentials, `"CWE-22"` for path traversal, `"CWE-352"` for CSRF, `"CWE-639"` for IDOR, `"CWE-200"` for sensitive data exposure). Always include at least one CWE; if multiple are clearly relevant (e.g., a finding that is both CWE-89 SQL injection and CWE-209 information disclosure), list each one.
+- `owasp` — one or more OWASP Top 10 2021 category strings in the form `"A<two digits>:2021"`. The ten categories are: `"A01:2021"` Broken Access Control, `"A02:2021"` Cryptographic Failures, `"A03:2021"` Injection, `"A04:2021"` Insecure Design, `"A05:2021"` Security Misconfiguration, `"A06:2021"` Vulnerable & Outdated Components, `"A07:2021"` Identification and Authentication Failures, `"A08:2021"` Software and Data Integrity Failures, `"A09:2021"` Security Logging and Monitoring Failures, `"A10:2021"` Server-Side Request Forgery.
+
+Both fields default to `[]` only when the finding genuinely doesn't map to any CWE or OWASP category (rare — primarily defense-in-depth info-level notes). For any concrete vulnerability, populate both.
 
 ## Severity guidance
 

@@ -41,7 +41,7 @@ Critical: 0   High: 1   Medium: 0   Low: 0   Info: 0
 
 ## High
 
-**[injection]** lib/users.ex:42 — confidence: high
+**[injection]** lib/users.ex:42 — confidence: high — CWE-89, A03:2021
 User-supplied `username` parameter is concatenated directly into a SQL string at the call to
 Repo.query/2 below. The trust boundary is the HTTP request handler at line 38, and the sink is
 the raw query string passed to Postgres — classic SQL injection. Worst-case outcome is
@@ -94,6 +94,8 @@ The agent always returns a single fenced ```json document conforming to:
       "file": "path/relative/to/repo/root.ext",
       "line": 42,
       "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config",
+      "cwe": ["CWE-89"],
+      "owasp": ["A03:2021"],
       "description": "What and why",
       "remediation": "Specific fix",
       "confidence": "high | medium | low"
@@ -105,6 +107,8 @@ The agent always returns a single fenced ```json document conforming to:
   }
 }
 ```
+
+Every finding carries `cwe` (array of CWE-IDs like `["CWE-89"]`) and `owasp` (array of OWASP Top 10 2021 category strings like `["A03:2021"]`) so triage tools can group findings by canonical class without parsing prose. Both default to `[]` only when a finding doesn't map to any standard category (rare).
 
 The `--json` flag prints this document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it.
 

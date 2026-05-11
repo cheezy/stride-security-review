@@ -108,6 +108,7 @@ Dispatch behavior depends on `FULL_MODE` from Step 1. In both modes every dispat
 {
   "findings": [
     {"severity": "...", "file": "...", "line": 1, "vulnerability_class": "...",
+     "cwe": ["CWE-89"], "owasp": ["A03:2021"],
      "description": "...", "remediation": "...", "confidence": "..."}
   ],
   "summary": {"files_reviewed": 0, "findings_by_severity": {...}}
@@ -161,7 +162,7 @@ Step 5's rendering does not need to know about batching — it sees one document
 3. For each severity tier in descending order (critical → high → medium → low → info), if the tier has any findings, print a section:
    - A heading: `## Critical` (or `## High`, etc.).
    - For each finding in that tier, print:
-     - One bold line: `**[vulnerability_class]** file:line — confidence: high|medium|low`
+     - One bold line: `**[vulnerability_class]** file:line — confidence: high|medium|low` — optionally followed by ` — <CWE-IDs and OWASP categories>` when either `cwe` or `owasp` is non-empty. The reference string is the joined `cwe` array followed by the joined `owasp` array, comma-separated (e.g. `CWE-89, CWE-209, A03:2021`). When both arrays are empty, OMIT the trailing ` — ...` segment entirely so the line ends after the confidence.
      - The `description` as a paragraph below.
      - A `Fix:` line followed by the `remediation` text.
      - A blank line between findings.

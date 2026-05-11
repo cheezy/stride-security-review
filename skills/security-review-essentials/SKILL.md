@@ -75,6 +75,8 @@ Each finding has:
 | `severity` | `critical`, `high`, `medium`, `low`, or `info` — see the agent prompt for assignment rubric |
 | `file` / `line` | Source location of the issue |
 | `vulnerability_class` | One of the nine classes listed above |
+| `cwe` | Array of CWE-IDs (e.g. `["CWE-89"]`) — stable identifier for triage and dashboards |
+| `owasp` | Array of OWASP Top 10 2021 category strings (e.g. `["A03:2021"]`) |
 | `description` | What the vulnerability is, what trust boundary is crossed, what the worst realistic outcome is |
 | `remediation` | The specific change that fixes it |
 | `confidence` | `high`, `medium`, or `low` — how certain the agent is given only the diff context |
