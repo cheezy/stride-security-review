@@ -10,7 +10,9 @@ This skill documents how to invoke the AI-powered security review delivered by t
 
 ## When to invoke
 
-Invoke the security review **before** any of the following:
+The plugin supports two scan modes — pick the one that matches the question you are asking.
+
+**Diff mode (default)** answers *"is this change safe to merge?"* Invoke it before any of the following:
 
 - Pushing a PR that touches authentication, authorization, session handling, or password/token handling.
 - Pushing a PR that touches cryptography (hashing, signing, encryption, random number generation for security purposes).
@@ -18,17 +20,43 @@ Invoke the security review **before** any of the following:
 - Merging code into `main` or any deployment branch when the diff is large enough that a manual security read is impractical.
 - A human reviewer asks "did you run a security check on this?"
 
-Invoke as:
+**Full mode (`--full`)** answers *"what latent issues are in this codebase right now?"* Invoke it for:
+
+- Onboarding the plugin onto an existing repo for the first time — establish a baseline before you start gating PRs.
+- Periodic posture checks (quarterly, or on a cron) so latent issues outside the recent diff surface get a regular look.
+- Vendoring-in / forking an upstream codebase — review the imported code end-to-end before integrating it.
+- Investigating a class-wide concern ("audit our use of cryptography across the repo") where the changed code is not the unit of interest.
+
+### Diff vs. full scan
+
+| Aspect | Diff mode (default) | Full mode (`--full`) |
+|---|---|---|
+| Question answered | Is this change safe to merge? | What latent issues are in this codebase right now? |
+| Input | Working-tree diff against `HEAD` | Tracked files via `git ls-files`, filtered by binary heuristic and a 256 KiB size cap |
+| Cost | One agent dispatch | One dispatch per batch of ~10 files (batches may run in parallel) |
+| Typical cadence | Per PR | Onboarding, quarterly, or on demand |
+| Output schema | Identical — same JSON document | Identical — same JSON document |
+
+### Invocations
 
 ```text
+# Diff mode (default)
 /security-review                 # all working-tree changes (staged + unstaged) vs HEAD
 /security-review path/to/file    # scope to specific paths
 /security-review --json          # raw JSON output (for piping into tools)
+
+# Full mode
+/security-review --full          # every tracked file in the repo
+/security-review --full lib/     # full scan scoped to a path
+/security-review --full --json   # full scan, raw JSON output
 ```
+
+`--full` and `--json` compose freely with each other and with path arguments.
 
 ## When NOT to invoke
 
-- On a clean working tree (no changes against HEAD). The command short-circuits with a single line.
+- On a clean working tree in diff mode (no changes against HEAD). The command short-circuits with a single line.
+- On an empty enumeration in full mode (e.g., a repo whose tracked files are entirely binaries or oversized). Same short-circuit behavior.
 - On docs-only or test-only changes that touch no production paths. The agent will return an empty findings list, but the dispatch cost is not zero.
 - As a substitute for routine secure-coding hygiene. The agent is a backstop, not the front line.
 

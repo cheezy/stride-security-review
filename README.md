@@ -18,12 +18,20 @@ The plugin auto-discovers the slash command, the agent, and the skill on install
 In any git repository, run:
 
 ```text
+# Diff mode (default) — review what's changed against HEAD
 /security-review                  # all working-tree changes (staged + unstaged) vs HEAD
 /security-review lib/auth.ex      # scope to one file
 /security-review lib/ test/       # scope to directories
 /security-review --json           # raw JSON output for piping into tools
 /security-review --json lib/foo   # path-scoped, raw JSON
+
+# Full mode (--full) — review the codebase end-to-end (new in v1.1.0)
+/security-review --full           # every tracked file in the repo
+/security-review --full lib/      # full scan scoped to a path
+/security-review --full --json    # full scan, raw JSON output
 ```
+
+Diff mode answers *"is this change safe to merge?"* — invoke it before pushing a PR. Full mode answers *"what latent issues are in this codebase right now?"* — invoke it when onboarding the plugin onto an existing repo, or on a periodic posture-check cadence. The output JSON schema is identical in both modes; only the unit of review and the human-readable header differ.
 
 Sample output for a small diff with one finding:
 
@@ -100,11 +108,47 @@ The agent always returns a single fenced ```json document conforming to:
 
 The `--json` flag prints this document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it.
 
+## Full-codebase scan mode
+
+The default `/security-review` invocation reviews the working-tree diff against `HEAD`. That answers *"is this PR safe to merge?"* — but not *"what latent issues are in this codebase right now?"* The `--full` flag (added in v1.1.0) answers the second question by reviewing whole files rather than hunks.
+
+Typical reasons to reach for `--full`: onboarding the plugin onto an existing repo (establish a baseline before you start gating PRs); a periodic posture check (quarterly, or on a cron); vendoring or forking an upstream codebase (review the imported code end-to-end before integrating); or a class-wide audit where the changed code is not the unit of interest. For PR-time gating, stay in diff mode — it is faster and the right shape for that question.
+
+```text
+/security-review --full                     # review every tracked file
+/security-review --full lib/ apps/web/      # scope to listed paths
+/security-review --full --json              # raw JSON for piping
+```
+
+`--full` is **additive** — it composes with path arguments and with `--json`. Diff mode remains the default and its behavior is unchanged. The output JSON schema is identical in both modes, so any tool already consuming the diff-mode JSON continues to work against a `--full` run.
+
+### Contract
+
+This is the surface contract every downstream piece of the plugin (slash command, agent prompt, skill, fixtures) follows. Implementation details for each bullet live in the file that owns that piece.
+
+| Concern | Decision |
+|---|---|
+| **Flag** | `--full`. Parsed in the slash command's argument step and stripped from the path list before it reaches enumeration. |
+| **Enumeration source** | `git ls-files` (optionally narrowed to user-supplied paths). This honors `.gitignore`, untracked-exclusions, and sparse-checkout — none of which `find` or a filesystem walk would honor for free. Untracked files are intentionally out of scope; if you want them reviewed, `git add -N` them first. |
+| **Binary filter** | A file is treated as binary (and skipped) when `grep -Iq . <file>` exits non-zero. This is the same heuristic `grep -I` uses internally — null-byte-in-prefix detection — and avoids dispatching the agent on PNGs, compiled artifacts, or minified bundles whose null bytes break tokenization. |
+| **Size cap** | Skip any file larger than **262,144 bytes (256 KiB)**. Above this threshold the file is almost always generated, vendored, or minified, and the agent's signal-to-noise on it collapses. Skipped files are counted in the summary but never reach the agent. |
+| **Batch size** | Dispatch the `security-reviewer` agent on **10 files per batch**. Below this we burn dispatch overhead; above it we crowd the context window and lose per-file fidelity. Batches MAY be dispatched in parallel via multiple Agent tool calls in a single response. |
+| **Findings merge rule** | The output of each batch is a JSON document conforming to the schema in the previous section. To merge N batch results: concatenate every batch's `findings` array; sum `summary.files_reviewed` across batches; sum each entry of `summary.findings_by_severity` (`critical`, `high`, `medium`, `low`, `info`) across batches. Do NOT deduplicate — different batches review different files and cannot collide on `(file, line)`. |
+| **Empty-input short-circuit** | If enumeration yields zero files after filtering (e.g., empty repo, all files binary or over-cap), print the same short-circuit message diff mode uses for an empty diff and stop without dispatching the agent. |
+| **Output schema** | Unchanged. The JSON document downstream tools consume is identical in diff and full modes; only the input shape and the human-readable header differ. |
+
+### What `--full` deliberately does NOT do
+
+- **It does not change vulnerability classes, severity rubric, or the false-positive filter.** Those live in the agent prompt and apply to both modes.
+- **It does not become the default.** Diff mode is the PR-gating workflow most users invoke; full mode is an explicit posture-check action.
+- **It does not enumerate untracked files.** `git ls-files` is the source of truth; if a file isn't tracked, it isn't reviewed.
+- **It does not deduplicate findings against an earlier run.** Each invocation is independent; trend tracking is the consumer's job.
+
 ## Customization
 
-Two customization knobs at v1.0:
+Two customization knobs:
 
-1. **Scope by path.** Pass paths as arguments to limit the review to a subset of changed files. Useful in monorepos.
+1. **Scope by path.** Pass paths as arguments to limit the review to a subset of changed files (diff mode) or tracked files (full mode). Useful in monorepos. Composable with both modes.
 2. **Extend the agent prompt.** Fork or patch [`agents/security-reviewer.md`](agents/security-reviewer.md) to add organization-specific vulnerability classes or to tighten/loosen the false-positive filter. **Keep the output schema stable** so downstream tooling continues to parse correctly.
 
 The skill at [`skills/security-review-essentials/SKILL.md`](skills/security-review-essentials/SKILL.md) documents the *surface*; the agent prompt documents the *behavior*. Customize the agent prompt for behavior changes; customize the skill description for trigger-phrase tuning.
@@ -114,6 +158,7 @@ The skill at [`skills/security-review-essentials/SKILL.md`](skills/security-revi
 The `--json` flag makes `/security-review` pipeable. Examples:
 
 - A Stride completion hook can run `/security-review --json` and refuse to mark a task `done` if a critical finding is present.
+- A CI gate can run `/security-review --full --json` on a schedule to track the codebase-wide finding count over time without coupling to any one PR.
 - A CI gate can call the agent directly (without the slash command) by importing the agent prompt and feeding it a diff from `git diff origin/main`.
 - A dashboard can ingest the JSON across many runs and chart the per-class trend.
 

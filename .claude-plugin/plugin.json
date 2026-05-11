@@ -1,7 +1,7 @@
 {
   "name": "security-review",
   "description": "AI-powered security review for code changes via the /security-review slash command. Loosely based on anthropics/claude-code-security-review.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Jeff Morgan",
     "email": "cheezy@letstango.ca"
