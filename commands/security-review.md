@@ -16,7 +16,8 @@ The user invoked you with the arguments `$ARGUMENTS`. Treat them as a space-sepa
 
 - If `--full` appears anywhere in the list, set `FULL_MODE=true` and remove that token from the list. Otherwise `FULL_MODE=false`. This selects between the two scan modes documented in the plugin README: `diff` (default) reviews working-tree changes against `HEAD`; `full` reviews tracked files end-to-end.
 - If `--json` appears anywhere in the list, set `JSON_MODE=true` and remove that token from the list. Otherwise `JSON_MODE=false`.
-- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json lib/` is valid and selects full scan + JSON output + scoped to `lib/`.
+- If `--maestro` appears anywhere in the list, set `MAESTRO_MODE=true` and remove that token from the list. Otherwise `MAESTRO_MODE=false`. This activates MAESTRO 7-layer classification — each finding's JSON gains a `maestro_layer` field, and the human-readable output adds a "By MAESTRO layer" subsection grouping findings by architectural layer. When `MAESTRO_MODE=false`, the `maestro_layer` field MUST NOT appear in the JSON document (preserves byte-identical output for callers that don't opt in). See [Cloud Security Alliance's MAESTRO framework](https://cloudsecurityalliance.org/blog/2025/02/06/agentic-ai-threat-modeling-framework-maestro) for the seven-layer model.
+- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro lib/` is valid and selects full scan + JSON output + MAESTRO classification + scoped to `lib/`.
 
 When `FULL_MODE=false`, an empty path list means "all changed files in the working tree." When `FULL_MODE=true`, an empty path list means "every tracked file in the repo."
 
@@ -120,9 +121,10 @@ Dispatch behavior depends on `FULL_MODE` from Step 1. In both modes every dispat
 Dispatch the Agent tool **once** with `subagent_type: "security-reviewer"`. The prompt must contain, in order:
 
 1. A one-line statement: `/security-review invocation, mode: diff`.
-2. The list of changed files (from Step 2a).
-3. The full diff text, fenced in a ```diff block.
-4. A reminder that the output must be a single fenced ```json document conforming to the agent's documented schema.
+2. When `MAESTRO_MODE=true`: a one-line statement `MAESTRO classification: required` followed by the seven-layer reference table (see "MAESTRO layer reference" subsection below). Otherwise omit this line so the agent does not emit `maestro_layer` fields on findings.
+3. The list of changed files (from Step 2a).
+4. The full diff text, fenced in a ```diff block.
+5. A reminder that the output must be a single fenced ```json document conforming to the agent's documented schema.
 
 Wait for the agent's response. Parse the fenced JSON. If parsing fails, print a one-line error naming `batch 0 (diff mode)` and include the first 500 characters of the response for the user to inspect — then stop. The parsed JSON IS the final document; no merge step is needed in diff mode.
 
@@ -133,9 +135,26 @@ Split the surviving file list from Step 2b into **batches of 10 files each**, in
 For each batch, dispatch the Agent tool with `subagent_type: "security-reviewer"`. The prompt must contain, in order:
 
 1. A one-line statement: `/security-review invocation, mode: full_file, batch <index> of <TOTAL>`.
-2. The list of file paths in this batch.
-3. For each file in the batch, in order: a `path: <relative-path>` line followed by a fenced code block containing the file's full contents. The fence language should match the file's extension where obvious (e.g., ` ```python`, ` ```javascript`, ` ```elixir`); fall back to a bare ` ``` ` fence when the extension is unknown.
-4. A reminder that the output must be a single fenced ```json document conforming to the agent's documented schema.
+2. When `MAESTRO_MODE=true`: a one-line statement `MAESTRO classification: required` followed by the seven-layer reference table (see "MAESTRO layer reference" subsection below). Otherwise omit so the agent does not emit `maestro_layer` fields.
+3. The list of file paths in this batch.
+4. For each file in the batch, in order: a `path: <relative-path>` line followed by a fenced code block containing the file's full contents. The fence language should match the file's extension where obvious (e.g., ` ```python`, ` ```javascript`, ` ```elixir`); fall back to a bare ` ``` ` fence when the extension is unknown.
+5. A reminder that the output must be a single fenced ```json document conforming to the agent's documented schema.
+
+#### MAESTRO layer reference
+
+Include this seven-row block in every agent dispatch when `MAESTRO_MODE=true`. The layer IDs match the canonical CSA MAESTRO data file (CloudSecurityAlliance/MAESTRO/src/data/maestro.ts) verbatim — the agent's `maestro_layer` field MUST contain one of these exact strings.
+
+| Layer ID | Name | Scope |
+|---|---|---|
+| `foundation-models` | Foundation Models | Core AI models (LLMs, custom-trained models). Threats: model poisoning, data leakage, member inference attacks. |
+| `data-operations` | Data Operations | Data handling for agents — storage, processing, vector embeddings. Threats: prompt injection via data, vector-store poisoning, embedding leaks. |
+| `agent-frameworks` | Agent Frameworks | Software frameworks and APIs used to create, orchestrate, and manage agents (LangChain, AutoGen, LangGraph, Genkit, MCP SDKs). Threats: tool-use abuse, planner injection, framework CVEs. |
+| `deployment-infrastructure` | Deployment & Infrastructure | Servers, networks, containers, and underlying resources hosting agents and APIs. Threats: container escape, exposed API endpoints, model-serving runtime CVEs. |
+| `evaluation-observability` | Evaluation & Observability | Systems to monitor, evaluate, and debug agent behavior. Threats: log tampering, eval gaming, observability blind spots. |
+| `security-compliance` | Security & Compliance | Security controls and compliance measures spanning the agent system. Threats: missing access controls, regulatory gaps, audit-trail integrity. |
+| `agent-ecosystem` | Agent Ecosystem | The broader environment where multiple agents interact, collaborate, and potentially compete. Threats: multi-agent collusion, A2A trust failures, untrusted-MCP-server pivots. |
+
+When `MAESTRO_MODE=true`, each finding's JSON gains an optional `maestro_layer` field. The agent SHOULD populate it with the best-fit layer ID for the finding's architectural location. If the finding genuinely doesn't fit any layer (e.g., a classic web vulnerability like SQL injection in a non-AI codebase), the field may be omitted. Step 5's renderer treats a missing or null `maestro_layer` the same way.
 
 **Parallel dispatch.** Batches MAY be dispatched in parallel by making multiple Agent tool calls in a single response. Each batch reviews a disjoint set of files and produces its own JSON document — they cannot interfere. Sequential dispatch also works; choose based on context-window pressure and observed latency. Either way, every batch must complete before Step 5.
 
@@ -158,17 +177,23 @@ Step 5's rendering does not need to know about batching — it sees one document
 1. A one-line header that reflects the scan mode:
    - In **diff mode** (`FULL_MODE=false`): `Security review — N findings across M files`. `M` is the changed-file count from Step 2a.
    - In **full mode** (`FULL_MODE=true`): `Security review (full scan) — N findings across M files`. `M` is the post-filter file count from Step 2b — i.e., the count actually handed to the agent, which already excludes binaries and oversized files.
+   - When `MAESTRO_MODE=true`, append the suffix ` — MAESTRO classification active` to the header so the reader knows the per-finding `maestro_layer` field is populated.
 2. The `summary.findings_by_severity` counts as a single line: `Critical: a   High: b   Medium: c   Low: d   Info: e`. Identical in both modes.
 3. For each severity tier in descending order (critical → high → medium → low → info), if the tier has any findings, print a section:
    - A heading: `## Critical` (or `## High`, etc.).
    - For each finding in that tier, print:
      - One bold line: `**[vulnerability_class]** file:line — confidence: high|medium|low` — optionally followed by ` — <CWE-IDs and OWASP categories>` when either `cwe` or `owasp` is non-empty. The reference string is the joined `cwe` array followed by the joined `owasp` array, comma-separated (e.g. `CWE-89, CWE-209, A03:2021`). When both arrays are empty, OMIT the trailing ` — ...` segment entirely so the line ends after the confidence.
+     - When `MAESTRO_MODE=true` AND the finding's `maestro_layer` field is populated, append a third dash-segment ` — layer: <layer-id>` to the bold line (e.g. `... confidence: high — CWE-89, A03:2021 — layer: data-operations`). Omit when the field is missing.
      - The `description` as a paragraph below.
      - A `Fix:` line followed by the `remediation` text.
      - A blank line between findings.
 
    Section rendering is identical in both modes.
-4. If there are zero findings, print the single mode-appropriate line and stop:
+4. When `MAESTRO_MODE=true` AND at least one finding has a populated `maestro_layer`, after the severity-grouped sections print an additional summary section:
+   - A heading: `## By MAESTRO layer`.
+   - For each of the seven layers (in canonical order: foundation-models, data-operations, agent-frameworks, deployment-infrastructure, evaluation-observability, security-compliance, agent-ecosystem), if any finding maps to that layer, print one line: `**<layer-id>** (<count>): <comma-separated file:line references>`.
+   - This subsection summarizes the scan by architectural layer so a reader can spot which MAESTRO tier needs the most attention without re-reading severity-grouped findings.
+5. If there are zero findings, print the single mode-appropriate line and stop:
    - Diff mode: `No findings. Reviewed M files.`
    - Full mode: `No findings. Reviewed M files in full-scan mode.`
 

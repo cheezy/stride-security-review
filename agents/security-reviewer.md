@@ -93,6 +93,7 @@ Wrap your output in a single fenced ```json block. The JSON document MUST confor
       "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config | prompt_injection | tool_abuse | agent_trust_boundary | model_output_execution | vector_store_poisoning",
       "cwe": ["CWE-89"],
       "owasp": ["A03:2021"],
+      "maestro_layer": "data-operations",
       "description": "One paragraph: what is the vulnerability, what is the trust boundary being crossed, and what is the realistic worst-case outcome.",
       "remediation": "One paragraph: the specific change that fixes it. Reference the library/function/pattern the codebase should use.",
       "confidence": "high | medium | low"
@@ -115,6 +116,24 @@ Every finding MUST include both `cwe` and `owasp` as arrays of stable identifier
 - `owasp` — one or more OWASP Top 10 2021 category strings in the form `"A<two digits>:2021"`. The ten categories are: `"A01:2021"` Broken Access Control, `"A02:2021"` Cryptographic Failures, `"A03:2021"` Injection, `"A04:2021"` Insecure Design, `"A05:2021"` Security Misconfiguration, `"A06:2021"` Vulnerable & Outdated Components, `"A07:2021"` Identification and Authentication Failures, `"A08:2021"` Software and Data Integrity Failures, `"A09:2021"` Security Logging and Monitoring Failures, `"A10:2021"` Server-Side Request Forgery.
 
 Both fields default to `[]` only when the finding genuinely doesn't map to any CWE or OWASP category (rare — primarily defense-in-depth info-level notes). For any concrete vulnerability, populate both.
+
+### MAESTRO 7-layer classification (opt-in)
+
+The `maestro_layer` field is populated **only when the caller explicitly requests MAESTRO classification** by including a `MAESTRO classification: required` directive in the agent prompt (the `/security-review` slash command does this when invoked with `--maestro`). When the directive is absent, OMIT the `maestro_layer` field entirely so the JSON document preserves byte-identical output for callers that don't opt in.
+
+When the directive is present, populate `maestro_layer` with one of these seven canonical layer IDs from the Cloud Security Alliance MAESTRO framework:
+
+| Layer ID | Use when the finding's architectural location is... |
+|---|---|
+| `foundation-models` | The model itself (LLM, custom-trained AI) — model poisoning, data leakage, member inference. |
+| `data-operations` | Data handling — prompt injection, vector-store poisoning, embedding leaks, RAG context contamination. |
+| `agent-frameworks` | Agent orchestration code — tool-use abuse, planner injection, framework CVEs (LangChain, AutoGen, LangGraph, MCP SDKs). |
+| `deployment-infrastructure` | Hosting / serving layer — container escape, exposed API endpoints, model-serving runtime issues. |
+| `evaluation-observability` | Monitoring and eval systems — log tampering, eval gaming, observability blind spots. |
+| `security-compliance` | Access controls and audit — missing authorization, regulatory gaps, audit-trail integrity. |
+| `agent-ecosystem` | Multi-agent or A2A interaction — multi-agent collusion, agent-to-agent trust failures, untrusted-MCP-server pivots. |
+
+If a finding doesn't fit any layer (e.g., a classic web vulnerability like SQL injection in a non-AI codebase), omit the field — do not force a fit. Pick the BEST layer for the finding's primary trust boundary, even when a finding could plausibly span two layers; consistency across runs matters more than perfect taxonomy.
 
 ## Severity guidance
 
