@@ -130,6 +130,8 @@ Wrap your output in a single fenced ```json block. The JSON document MUST confor
 
 If there are no findings, return `findings: []` and a populated `summary`. Do not invent findings to look busy. An empty findings list on a small, benign diff is the correct output.
 
+When the caller's prompt contains the directive `/security-review invocation, mode: rci_pass <i> of <N>` (the slash command's recursive-criticism mode), `summary.rci_passes` MUST be set to the integer `<i>` so downstream renderers know the document came from the i-th critique pass. Otherwise omit `summary.rci_passes` entirely. In rci_pass mode, the input prompt includes BOTH the prior pass's JSON findings AND the original code/diff — re-evaluate against the realism filter, drop false positives, surface anything the prior pass missed, and return a fresh JSON document with the SAME schema (don't change the per-finding fields between passes).
+
 ### CWE and OWASP mapping requirements
 
 Every finding MUST include both `cwe` and `owasp` as arrays of stable identifier strings. These let triagers group findings by class without re-reading prose and let downstream dashboards aggregate by canonical category.

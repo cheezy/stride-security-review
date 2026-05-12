@@ -17,7 +17,8 @@ The user invoked you with the arguments `$ARGUMENTS`. Treat them as a space-sepa
 - If `--full` appears anywhere in the list, set `FULL_MODE=true` and remove that token from the list. Otherwise `FULL_MODE=false`. This selects between the two scan modes documented in the plugin README: `diff` (default) reviews working-tree changes against `HEAD`; `full` reviews tracked files end-to-end.
 - If `--json` appears anywhere in the list, set `JSON_MODE=true` and remove that token from the list. Otherwise `JSON_MODE=false`.
 - If `--maestro` appears anywhere in the list, set `MAESTRO_MODE=true` and remove that token from the list. Otherwise `MAESTRO_MODE=false`. This activates MAESTRO 7-layer classification — each finding's JSON gains a `maestro_layer` field, and the human-readable output adds a "By MAESTRO layer" subsection grouping findings by architectural layer. When `MAESTRO_MODE=false`, the `maestro_layer` field MUST NOT appear in the JSON document (preserves byte-identical output for callers that don't opt in). See [Cloud Security Alliance's MAESTRO framework](https://cloudsecurityalliance.org/blog/2025/02/06/agentic-ai-threat-modeling-framework-maestro) for the seven-layer model.
-- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro lib/` is valid and selects full scan + JSON output + MAESTRO classification + scoped to `lib/`.
+- If `--rci` appears, set `RCI_PASSES` to the value of the NEXT token if that token parses as an integer in `1..3` — otherwise default `RCI_PASSES=1`. If `--rci` is absent, `RCI_PASSES=0` (no recursive criticism, single dispatch as today). RCI = Recursive Criticism & Improvement: after the standard dispatch produces a findings document, run `RCI_PASSES` additional critique-and-refine dispatches that receive both the prior pass's JSON AND the original input, and asks the agent to drop false positives and surface anything that was missed. OpenSSF documents this technique as reducing security weaknesses by up to an order of magnitude. The cap of 3 bounds cost; `RCI_PASSES > 3` is silently clamped. Combining `--rci` with `--full` is supported but expensive — N=2 over a 41-batch full scan is 41+82 = 123 agent dispatches. See Step 4.5 below for the iteration loop.
+- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro --rci 2 lib/` is valid.
 
 When `FULL_MODE=false`, an empty path list means "all changed files in the working tree." When `FULL_MODE=true`, an empty path list means "every tracked file in the repo."
 
@@ -167,6 +168,27 @@ When `MAESTRO_MODE=true`, each finding's JSON gains an optional `maestro_layer` 
 - `summary.findings_by_severity`: for each of the five keys (`critical`, `high`, `medium`, `low`, `info`), sum the value across all batches. Always emit all five keys even when the count is zero.
 
 Step 5's rendering does not need to know about batching — it sees one document either way.
+
+### Step 4.5: Recursive criticism & improvement (when `RCI_PASSES > 0`)
+
+After Step 4 has produced a findings document (either via the single diff-mode dispatch or via the full-mode merge), if `RCI_PASSES > 0`, run a critique loop:
+
+For `i` in `1..RCI_PASSES`:
+
+1. Dispatch the Agent tool with `subagent_type: "security-reviewer"`. The prompt must contain, in order:
+   - A one-line statement: `/security-review invocation, mode: rci_pass <i> of <RCI_PASSES>`.
+   - A directive paragraph: `You produced (or inherited) the JSON findings document below. Critically re-review it against the original input. (a) Remove any finding that is a false positive or whose risk is bounded enough to fail the realism filter. (b) Add any finding that the prior pass missed but that is clearly exploitable in the supplied input. Return a single fenced ` + "```json" + ` document conforming to the documented schema. Preserve the schema exactly — same per-finding fields, same summary shape. Do NOT inflate findings to look thorough.`
+   - The prior-pass findings, fenced in a ```json block.
+   - The ORIGINAL input that was passed in Step 4 (the diff text in diff mode, OR the per-file content list from the batch that originally produced the finding in full mode — for full mode, dispatch one rci pass per ORIGINAL batch so each critique pass only sees its own batch's files plus its own batch's findings; merge per the same Step 4b merge rule after every pass).
+   - A reminder that the output must be a single fenced ```json document, same schema as the prior pass.
+
+2. Parse the returned JSON. If parsing fails, print a one-line error naming the pass (`rci pass <i>`) plus the first 500 characters of the response, and stop — do NOT silently fall back to the prior pass's findings.
+
+3. Replace the working findings document with the new one. Add the pass index to `summary.rci_passes` (an integer counter — schema addition active only when `RCI_PASSES > 0`).
+
+After the loop, the final document goes to Step 5. If a pass produces a smaller-or-equal-size findings list than the prior pass AND only removes findings (no new ones added), that's the expected convergence — log nothing special. If a pass repeatedly adds new findings on every iteration, the rubric is unstable; the human reviewer should investigate.
+
+**Cost note:** every `--rci` pass roughly doubles the agent-call cost. `--rci 1` over a single diff is 2 dispatches; `--rci 3 --full` over a 41-batch scan is 41 + 41*3 = 164 dispatches. The slash command does not warn about this — it's the user's choice; the help text and README document the trade-off.
 
 ### Step 5: Render the output
 

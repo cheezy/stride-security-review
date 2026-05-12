@@ -34,6 +34,11 @@ In any git repository, run:
 /security-review --maestro                # classify each finding by MAESTRO layer
 /security-review --maestro --full         # full scan + layer classification
 /security-review --maestro --json lib/    # raw JSON with maestro_layer fields
+
+# Recursive Criticism & Improvement (--rci [N]) — run N additional critique passes
+/security-review --rci                    # one extra critique pass after the first dispatch
+/security-review --rci 2                  # two extra critique passes (clamped to 3)
+/security-review --rci --full             # critique pass over a full scan (expensive)
 ```
 
 Diff mode answers *"is this change safe to merge?"* — invoke it before pushing a PR. Full mode answers *"what latent issues are in this codebase right now?"* — invoke it when onboarding the plugin onto an existing repo, or on a periodic posture-check cadence. MAESTRO mode answers *"which architectural layer needs the most attention?"* — invoke it on codebases that wire LLMs / agents / Model Context Protocol clients into the request flow, so findings can be grouped by the seven-layer model from Cloud Security Alliance's MAESTRO framework. The flags compose: `--maestro --full --json lib/` is valid. The output JSON schema is identical in diff and full modes; `--maestro` is the one flag that adds an optional field (`maestro_layer`) to each finding when set.
@@ -127,6 +132,8 @@ The agent always returns a single fenced ```json document conforming to:
 Every finding carries `cwe` (array of CWE-IDs like `["CWE-89"]`) and `owasp` (array of OWASP Top 10 2021 category strings like `["A03:2021"]`) so triage tools can group findings by canonical class without parsing prose. Both default to `[]` only when a finding doesn't map to any standard category (rare).
 
 When the slash command is invoked with `--maestro`, each finding gains an optional `maestro_layer` field carrying one of seven canonical layer IDs (`foundation-models`, `data-operations`, `agent-frameworks`, `deployment-infrastructure`, `evaluation-observability`, `security-compliance`, `agent-ecosystem`) from the Cloud Security Alliance MAESTRO framework. When `--maestro` is not set, the field is OMITTED from the JSON entirely — callers that don't opt in see byte-identical legacy output.
+
+When invoked with `--rci [N]` (Recursive Criticism & Improvement, default N=1, clamped to 3), the slash command performs N additional critique-and-refine passes after the initial dispatch. Each pass receives both the prior pass's JSON findings AND the original input, and is asked to drop false positives and surface anything that was missed. The `summary.rci_passes` integer in the final JSON records how many critique passes ran. OpenSSF documents this technique as reducing security-weakness count by up to an order of magnitude. Cost scales linearly with N — `--rci 3 --full` over a 41-batch scan is 164 agent dispatches.
 
 The `--json` flag prints this document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it.
 
