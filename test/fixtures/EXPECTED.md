@@ -21,6 +21,13 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `model_output_execution.py` → model_output_execution (critical), `cwe: ["CWE-95", "CWE-94"]`, `owasp: ["A03:2021"]` — OpenAI chat-completion response passed directly to `exec()` with no AST check, no sandbox, no allow-list. Python ecosystem coverage.
 - [ ] `agent_trust_boundary.ts` → agent_trust_boundary (high), `cwe: ["CWE-1427"]`, `owasp: ["A04:2021"]` — researcher-agent output piped into writer-agent prompt with no delimiter, no integrity check, no quarantine. TypeScript / @anthropic-ai/sdk coverage.
 
+### Supply-chain class
+
+- [ ] `Dockerfile.floating_tag` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A06:2021"]` — production-bound container image pinned to floating tag `node:20` instead of an immutable digest.
+- [ ] `curl_pipe_sh.sh` → supply_chain (medium), `cwe: ["CWE-494"]`, `owasp: ["A08:2021"]` — installer script pipes `curl` and `wget` output directly into `sh`/`bash` with no signature or checksum verification.
+- [ ] `github_workflow_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — GitHub Actions referencing third-party actions by `@v4` / `@main` floats instead of SHA. GitHub-Actions ecosystem coverage.
+- [ ] `gitlab_ci_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — GitLab CI `include` referencing a remote pipeline by branch/tag. GitLab CI ecosystem coverage — proves the rule is platform-neutral.
+
 ## How to run the smoke test
 
 1. In a Claude Code session with the security-review plugin installed, `cd` into a clean clone of the security-review repo.

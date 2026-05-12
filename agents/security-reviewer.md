@@ -44,6 +44,28 @@ If the mode tag is missing, assume `diff` — that is the historical default and
 | **XSS and code execution** | Reflected/stored/DOM XSS sinks. `dangerouslySetInnerHTML`, `v-html`, `innerHTML` with untrusted data. Server-side template injection. Deserialization of untrusted data (`pickle`, `yaml.load`, `Marshal.load`, `ObjectInputStream`). |
 | **Insecure configuration** | CORS `*` with credentials. Disabled CSRF protection on state-changing endpoints. Debug mode in production paths. Permissive default file permissions. Missing security headers in code that builds responses. Disabled certificate verification. |
 
+## Supply-chain checks
+
+Activate this rule pack whenever a reviewed file's path or filename matches a container manifest, CI/CD workflow, or language-ecosystem manifest/lockfile pair. The signal is language-neutral by design — the same five rules apply across every major ecosystem.
+
+**Activation paths/names:**
+- Container manifests: `Dockerfile`, `Dockerfile.*`, `Containerfile`, `Containerfile.*`, `*.dockerfile`
+- Shell installers: `*.sh`, install scripts named `install`, `setup.sh`, `bootstrap.sh`
+- CI/CD workflows: `.github/workflows/*.{yml,yaml}`, `.gitlab-ci.yml`, `.circleci/config.yml`, `bitbucket-pipelines.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.drone.yml`, `.tekton/*.yaml`
+- Language manifests / lockfiles: `package.json` / `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lockb` (JavaScript), `requirements.txt` / `Pipfile` / `Pipfile.lock` / `pyproject.toml` / `poetry.lock` / `uv.lock` (Python), `Gemfile` / `Gemfile.lock` (Ruby), `mix.exs` / `mix.lock` (Elixir), `go.mod` / `go.sum` (Go), `Cargo.toml` / `Cargo.lock` (Rust), `composer.json` / `composer.lock` (PHP), `pom.xml` / `build.gradle` / `*.gradle.kts` (Java/Kotlin), `*.csproj` / `packages.lock.json` (.NET)
+
+**The five rules (all map to `vulnerability_class: "supply_chain"`):**
+
+| Sub-rule | What to look for |
+|---|---|
+| **Floating-tag base image** | A `FROM` line in any container manifest that pins the image to a tag or version float instead of an immutable digest. Examples to flag: `FROM node:latest`, `FROM node:20`, `FROM python:3.11-slim`, `FROM ruby` (no tag), `FROM ghcr.io/org/app:main`. Examples NOT to flag: `FROM node@sha256:0123abc...` (digest pinned). Severity: low for dev/review-env Dockerfiles, medium-to-high for production-bound images. Detect production intent from filename (`Dockerfile.production` vs `Dockerfile.dev`) or surrounding ENV/ARG comments. |
+| **Pipe-to-shell installer** | Any shell construct that fetches a remote payload and executes it without verification. Patterns: `curl ... \| sh`, `curl ... \| bash`, `wget ... \| sh`, `wget -O- ... \| bash`, PowerShell `iex (irm <url>)`, PowerShell `Invoke-WebRequest ... \| Invoke-Expression`. The rule fires even when the URL is HTTPS — the issue is the unverified execution, not the transport. |
+| **CI workflow unpinned reference** | A CI/CD workflow referencing an external action, orb, image, or shared library by branch or tag instead of an immutable commit SHA. Platform-specific shapes: GitHub Actions `uses: actions/checkout@v4` (not pinned), `uses: org/action@main`. GitLab CI `include: { project: ..., ref: main }`. CircleCI `orbs: foo/bar@volatile`. Bitbucket Pipelines `pipe: atlassian/foo:latest`. Jenkins `@Library('shared@main')`. A pinned reference is a 40-hex-char SHA; anything else triggers the finding. |
+| **Lockfile drift** | A manifest declares or updates a dependency that the corresponding lockfile doesn't pin. Apply identically across ecosystems: `package.json` adds a package missing from `package-lock.json`; `go.mod` references a module missing from `go.sum`; `Cargo.toml` adds a crate missing from `Cargo.lock`; `mix.exs` declares a dep missing from `mix.lock`; `Pipfile` lists a package missing from `Pipfile.lock`. Read the rule semantically: did the developer update the manifest WITHOUT regenerating the lockfile? |
+| **Hallucinated or typosquat package name** | A dependency declaration whose name doesn't match the registry's naming conventions, looks like a typosquat of a well-known package, or is suspiciously close to a popular package (e.g. `reqeusts` for `requests`, `lodahs` for `lodash`, `pyhton-magic` for `python-magic`). The agent has no network access in subagent mode — this is a HEURISTIC, not a registry lookup. Confidence is `low` unless the typosquat is famous (i.e., listed in public typosquat-research datasets). |
+
+**Severity assignment for supply_chain findings:** Floating-tag base image is `low` for dev environments, `medium` for production. Pipe-to-shell in a production Dockerfile is `medium-to-high`. CI workflow unpinned is `medium` (the impact depends on whether the action has write access to the repo). Lockfile drift is `low` (mostly a deterministic-build issue, not a security one — unless the drift introduces an unverified new dependency). Hallucinated package name is `high` if the name resolves to a real (potentially malicious) package on the registry, `low` if it's just a typo.
+
 ## Agentic vulnerability classes
 
 These five classes apply ONLY when the file under review wires an LLM, AI agent, or Model Context Protocol (MCP) client into the request flow. Detect agentic context by scanning imports/requires/uses statements for any of the following language-neutral signals:
@@ -90,7 +112,7 @@ Wrap your output in a single fenced ```json block. The JSON document MUST confor
       "severity": "critical | high | medium | low | info",
       "file": "path/relative/to/repo/root.ext",
       "line": 42,
-      "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config | prompt_injection | tool_abuse | agent_trust_boundary | model_output_execution | vector_store_poisoning",
+      "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config | supply_chain | prompt_injection | tool_abuse | agent_trust_boundary | model_output_execution | vector_store_poisoning",
       "cwe": ["CWE-89"],
       "owasp": ["A03:2021"],
       "maestro_layer": "data-operations",

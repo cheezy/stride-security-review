@@ -72,6 +72,7 @@ The `security-reviewer` agent (see [`agents/security-reviewer.md`](agents/securi
 | Race conditions | Filesystem TOCTOU, unlocked read-modify-write on security-sensitive state, symlink races |
 | XSS / code execution | DOM/reflected/stored XSS, SSTI, deserialization of untrusted data |
 | Insecure configuration | CORS `*` with credentials, disabled CSRF, debug mode in prod, missing security headers, disabled cert verification |
+| Supply chain | Floating-tag container base images, `curl \| sh` installers, CI/CD references by branch/tag instead of immutable SHA, manifest/lockfile drift, typosquat or hallucinated package names — multi-platform (Docker, GitHub Actions, GitLab CI, CircleCI, Bitbucket Pipelines, Jenkins) and multi-ecosystem (npm/PyPI/RubyGems/Hex/crates.io/Maven/NuGet/Packagist/Go modules) |
 
 For codebases that integrate LLMs, AI agents, or Model Context Protocol clients, five additional MAESTRO-derived classes activate (the file must import a recognized LLM/agent/MCP SDK in any language — Python, JavaScript/TypeScript, Go, Ruby, Elixir, Java/Kotlin all supported):
 
