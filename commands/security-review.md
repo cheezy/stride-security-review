@@ -77,17 +77,25 @@ You must produce a filtered list of `(file_path, file_contents)` records that th
 
 - **Filter out oversized files.** Drop any file whose size exceeds **262,144 bytes (256 KiB)**. The byte size comes from `wc -c < "$file"` (or `stat`); above this threshold the file is almost always generated, vendored, or minified and the agent's signal-to-noise on it collapses. Skip oversized files the same way you skip binaries.
 
-- **Putting the enumeration and filters together**, the surviving file list can be produced with this concrete loop (run once, capture stdout):
+- **Putting the enumeration and filters together**, the surviving file list can be produced with this concrete loop (run once, capture stdout). The same loop also records skipped files so they appear in the final summary's `files_skipped` array:
 
   ```bash
   git ls-files -- <path1> <path2> ... | while IFS= read -r f; do
-    grep -Iq . "$f" || continue                # drop binaries
-    [ "$(wc -c < "$f")" -le 262144 ] || continue   # drop > 256 KiB
+    if ! grep -Iq . "$f" 2>/dev/null; then
+      printf 'SKIP\tbinary\t%s\n' "$f" >&2          # record skipped binaries on stderr
+      continue
+    fi
+    if [ "$(wc -c < "$f")" -gt 262144 ]; then
+      printf 'SKIP\toversize\t%s\n' "$f" >&2        # record skipped oversize files
+      continue
+    fi
     printf '%s\n' "$f"
   done
   ```
 
-  When no path arguments were given, omit the `-- <path1> ...` suffix. The output is the canonical surviving list for the rest of the pipeline.
+  When no path arguments were given, omit the `-- <path1> ...` suffix. stdout is the canonical surviving list for the rest of the pipeline; stderr contains the skipped-file records.
+
+- **Track `files_skipped`.** Parse the stderr `SKIP\t<reason>\t<path>` lines into an array of `{path: <string>, reason: <"binary" | "oversize" | "unreadable">}` objects. Carry this array into the merged document Step 4b produces (see `summary.files_skipped` below). The reason vocabulary is fixed — do not invent additional values. If a file is enumerable but cannot be read (rare; permission denied, IO error during Step 4 content capture), append a `{path, reason: "unreadable"}` entry from Step 4 as well.
 
 - **Capture file contents** for each surviving path. Read each file with the Read tool; you will hand the agent a list of `(file_path, contents)` records in Step 4. The full-mode file count for Step 3 is the length of this surviving list (post-filter).
 
@@ -166,9 +174,10 @@ When `MAESTRO_MODE=true`, each finding's JSON gains an optional `maestro_layer` 
 
 **Merge rule.** After all batches succeed, merge their JSON documents into a single document of the same shape and hand it to Step 5 as if a single dispatch had produced it. Build the merged document as follows:
 
-- `findings`: concatenate every batch's `findings` array in batch order (batch 0's findings first, then batch 1, etc.). Do NOT deduplicate — different batches review disjoint files and cannot collide on `(file, line)`.
+- `findings`: concatenate every batch's `findings` array in batch order (batch 0's findings first, then batch 1, etc.), then run an order-stable dedup pass keyed by `(file, line, vulnerability_class)`. The first occurrence wins; later duplicates are dropped. Batches review disjoint files, so collisions are rare — but a single file can produce duplicate findings when an RCI pass (Step 4.5) replays the same batch, and shared imports/setup code can drive different batches' agent prompts to converge on the same import-line finding. Dedup catches both. **Gate:** dedup runs only when there is more than one batch (`TOTAL > 1`) or when an RCI pass has produced an intermediate document — in diff mode (one dispatch, no RCI) dedup is a no-op and MUST be skipped so the merged document is byte-identical to the agent's output.
 - `summary.files_reviewed`: sum each batch's `summary.files_reviewed`.
-- `summary.findings_by_severity`: for each of the five keys (`critical`, `high`, `medium`, `low`, `info`), sum the value across all batches. Always emit all five keys even when the count is zero.
+- `summary.findings_by_severity`: for each of the five keys (`critical`, `high`, `medium`, `low`, `info`), recompute counts from the POST-dedup findings list. Always emit all five keys even when the count is zero. Do not sum the per-batch counters — they can drift from the deduped findings.
+- `summary.files_skipped`: the array recorded in Step 2b (binary + oversize) plus any `unreadable` entries that surfaced during Step 4's content capture. Each entry is `{path: <string>, reason: "binary" | "oversize" | "unreadable"}`. Always emit this key in full mode, even when the array is empty (i.e. `"files_skipped": []`). The empty-array case is the proof that the filters ran and dropped nothing — omitting the key would be ambiguous. Diff mode omits this key entirely (the full-mode filter pipeline does not run in diff mode).
 
 Step 5's rendering does not need to know about batching — it sees one document either way.
 
@@ -232,9 +241,14 @@ The fingerprint MUST be stable across runs: it must NOT incorporate severity, co
    - A heading: `## By MAESTRO layer`.
    - For each of the seven layers (in canonical order: foundation-models, data-operations, agent-frameworks, deployment-infrastructure, evaluation-observability, security-compliance, agent-ecosystem), if any finding maps to that layer, print one line: `**<layer-id>** (<count>): <comma-separated file:line references>`.
    - This subsection summarizes the scan by architectural layer so a reader can spot which MAESTRO tier needs the most attention without re-reading severity-grouped findings.
-5. If there are zero findings, print the single mode-appropriate line and stop:
+5. If there are zero findings, print the single mode-appropriate line:
    - Diff mode: `No findings. Reviewed M files.`
    - Full mode: `No findings. Reviewed M files in full-scan mode.`
+6. **Skipped-files tail (full mode only).** If `summary.files_skipped` is non-empty, print a final block after every other section (and after the zero-findings line, when that branch fires):
+   - Heading: `## Skipped` (one blank line above).
+   - One line summarizing the totals by reason: `Skipped K files: binary=<a>, oversize=<b>, unreadable=<c>` — omit any reason whose count is zero. If only one reason has entries, the summary still uses this format (e.g., `Skipped 17 files: binary=17`).
+   - A bulleted list of the skipped paths in enumeration order: `- <path> (binary)`, `- <path> (oversize)`, `- <path> (unreadable)`. Cap the list at 50 entries; if `K > 50`, render the first 50 followed by a single line `- ... and <K - 50> more` so the report stays readable on a screen.
+   - When `files_skipped` is empty, OMIT the entire `## Skipped` block — do not print an empty heading. In diff mode the key isn't emitted in the first place, so this block never renders.
 
 Do not invent any additional commentary, suggestions, or follow-up questions. The report is the deliverable.
 
