@@ -135,28 +135,46 @@ The agent always returns a single fenced ```json document conforming to:
       "severity": "critical | high | medium | low | info",
       "file": "path/relative/to/repo/root.ext",
       "line": 42,
-      "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config",
+      "vulnerability_class": "injection | authentication | authorization | data_exposure | crypto | input_validation | race_condition | xss_or_code_exec | insecure_config | supply_chain | prompt_injection | tool_abuse | agent_trust_boundary | model_output_execution | vector_store_poisoning",
       "cwe": ["CWE-89"],
       "owasp": ["A03:2021"],
       "description": "What and why",
       "remediation": "Specific fix",
-      "confidence": "high | medium | low"
+      "confidence": "high | medium | low",
+      "maestro_layer": "data-operations",
+      "patch": "--- a/lib/users.ex\n+++ b/lib/users.ex\n@@ ..."
     }
   ],
   "summary": {
     "files_reviewed": 7,
-    "findings_by_severity": {"critical": 0, "high": 1, "medium": 2, "low": 0, "info": 0}
+    "findings_by_severity": {"critical": 0, "high": 1, "medium": 2, "low": 0, "info": 0},
+    "files_skipped": [{"path": "priv/static/app.js", "reason": "oversize"}],
+    "suppressed_count": 0,
+    "rci_passes": 0
   }
 }
 ```
 
-Every finding carries `cwe` (array of CWE-IDs like `["CWE-89"]`) and `owasp` (array of OWASP Top 10 2021 category strings like `["A03:2021"]`) so triage tools can group findings by canonical class without parsing prose. Both default to `[]` only when a finding doesn't map to any standard category (rare).
+**Required per-finding fields** (always present): `severity`, `file`, `line`, `vulnerability_class`, `cwe`, `owasp`, `description`, `remediation`, `confidence`. Every finding carries `cwe` (array of CWE-IDs like `["CWE-89"]`) and `owasp` (array of OWASP Top 10 2021 category strings like `["A03:2021"]`) so triage tools can group findings by canonical class without parsing prose. Both arrays default to `[]` only when a finding doesn't map to any standard category (rare).
 
-When the slash command is invoked with `--maestro`, each finding gains an optional `maestro_layer` field carrying one of seven canonical layer IDs (`foundation-models`, `data-operations`, `agent-frameworks`, `deployment-infrastructure`, `evaluation-observability`, `security-compliance`, `agent-ecosystem`) from the Cloud Security Alliance MAESTRO framework. When `--maestro` is not set, the field is OMITTED from the JSON entirely — callers that don't opt in see byte-identical legacy output.
+**Optional per-finding fields** (emitted only when the corresponding flag is set):
 
-When invoked with `--rci [N]` (Recursive Criticism & Improvement, default N=1, clamped to 3), the slash command performs N additional critique-and-refine passes after the initial dispatch. Each pass receives both the prior pass's JSON findings AND the original input, and is asked to drop false positives and surface anything that was missed. The `summary.rci_passes` integer in the final JSON records how many critique passes ran. OpenSSF documents this technique as reducing security-weakness count by up to an order of magnitude. Cost scales linearly with N — `--rci 3 --full` over a 41-batch scan is 164 agent dispatches.
+| Field | Emitted when | Notes |
+|---|---|---|
+| `maestro_layer` | `--maestro` is set | One of seven canonical layer IDs from CSA MAESTRO: `foundation-models`, `data-operations`, `agent-frameworks`, `deployment-infrastructure`, `evaluation-observability`, `security-compliance`, `agent-ecosystem`. Omitted entirely when `--maestro` is not set. |
+| `patch` | `--patches` is set AND the agent can produce a surgical fix | A unified-diff string the user can pipe to `git apply`. The agent emits a patch only when the fix is surgical (1–20 lines, single file, no new deps, no API breaks), unambiguous, and verifiable from the supplied input alone. Most findings won't have one even with `--patches` set. |
 
-The `--json` flag prints this document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it.
+**Optional summary fields**:
+
+| Field | Emitted when | Notes |
+|---|---|---|
+| `files_skipped` | `--full` is set | Array of `{path, reason}` records for files the binary/size filters dropped. `reason` is one of `binary`, `oversize`, `unreadable`. Always emitted in full mode (even as `[]` to prove the filter ran); omitted in diff mode. |
+| `suppressed_count` | `--baseline` is set | Integer count of findings filtered out by the baseline. Omitted entirely when no baseline is in play. |
+| `rci_passes` | `--rci [N]` is set | Integer recording how many Recursive Criticism & Improvement passes ran on top of the initial dispatch. Omitted when `--rci` is not set. |
+
+**Cross-batch dedup (full mode).** Full-mode batches are merged with an order-stable dedup pass keyed by `(file, line, vulnerability_class)` — duplicates that surface across batches or RCI passes collapse to the first occurrence. Diff mode is a single dispatch and dedup is a no-op there; the merged document is byte-identical to the agent's output.
+
+**Flag composition.** All flags compose. `--maestro --rci 2 --patches --baseline --full --json lib/` is a valid invocation. The `--json` flag prints the document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it.
 
 ## Full-codebase scan mode
 
@@ -183,9 +201,10 @@ This is the surface contract every downstream piece of the plugin (slash command
 | **Binary filter** | A file is treated as binary (and skipped) when `grep -Iq . <file>` exits non-zero. This is the same heuristic `grep -I` uses internally — null-byte-in-prefix detection — and avoids dispatching the agent on PNGs, compiled artifacts, or minified bundles whose null bytes break tokenization. |
 | **Size cap** | Skip any file larger than **262,144 bytes (256 KiB)**. Above this threshold the file is almost always generated, vendored, or minified, and the agent's signal-to-noise on it collapses. Skipped files are counted in the summary but never reach the agent. |
 | **Batch size** | Dispatch the `security-reviewer` agent on **10 files per batch**. Below this we burn dispatch overhead; above it we crowd the context window and lose per-file fidelity. Batches MAY be dispatched in parallel via multiple Agent tool calls in a single response. |
-| **Findings merge rule** | The output of each batch is a JSON document conforming to the schema in the previous section. To merge N batch results: concatenate every batch's `findings` array; sum `summary.files_reviewed` across batches; sum each entry of `summary.findings_by_severity` (`critical`, `high`, `medium`, `low`, `info`) across batches. Do NOT deduplicate — different batches review different files and cannot collide on `(file, line)`. |
+| **Findings merge rule** | The output of each batch is a JSON document conforming to the schema in the previous section. Merge in batch order, then run an order-stable dedup pass keyed by `(file, line, vulnerability_class)` — first occurrence wins. Dedup catches the rare case where shared setup code drives different batches to converge on the same finding, and where RCI passes replay the same batch. `summary.findings_by_severity` is recomputed from the post-dedup findings list, not summed from per-batch counters (those drift after dedup). `summary.files_reviewed` is summed across batches. The dedup pass is a no-op in diff mode (one dispatch, no RCI) so diff-mode JSON output is byte-identical to the agent's response. |
+| **Skipped-files reporting** | The Step 2b enumeration loop records every filtered file as `{path, reason}` where `reason ∈ {binary, oversize, unreadable}`. The merged document carries these as `summary.files_skipped` (always emitted in full mode, even as `[]`) so users can audit coverage. The human-readable report renders a `## Skipped` block capped at 50 entries with an `... and N more` overflow line. |
 | **Empty-input short-circuit** | If enumeration yields zero files after filtering (e.g., empty repo, all files binary or over-cap), print the same short-circuit message diff mode uses for an empty diff and stop without dispatching the agent. |
-| **Output schema** | Unchanged. The JSON document downstream tools consume is identical in diff and full modes; only the input shape and the human-readable header differ. |
+| **Output schema** | The JSON document downstream tools consume is identical in diff and full modes for the required fields; full mode additionally emits `summary.files_skipped`. Optional fields gated by flags (`maestro_layer`, `patch`, `summary.rci_passes`, `summary.suppressed_count`) compose the same way in both modes. |
 
 ### What `--full` deliberately does NOT do
 
