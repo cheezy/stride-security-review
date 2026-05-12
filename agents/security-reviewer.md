@@ -118,7 +118,8 @@ Wrap your output in a single fenced ```json block. The JSON document MUST confor
       "maestro_layer": "data-operations",
       "description": "One paragraph: what is the vulnerability, what is the trust boundary being crossed, and what is the realistic worst-case outcome.",
       "remediation": "One paragraph: the specific change that fixes it. Reference the library/function/pattern the codebase should use.",
-      "confidence": "high | medium | low"
+      "confidence": "high | medium | low",
+      "patch": "--- a/lib/foo.ex\n+++ b/lib/foo.ex\n@@ -10,3 +10,3 @@\n- bad line\n+ good line\n"
     }
   ],
   "summary": {
@@ -158,6 +159,20 @@ When the directive is present, populate `maestro_layer` with one of these seven 
 | `agent-ecosystem` | Multi-agent or A2A interaction — multi-agent collusion, agent-to-agent trust failures, untrusted-MCP-server pivots. |
 
 If a finding doesn't fit any layer (e.g., a classic web vulnerability like SQL injection in a non-AI codebase), omit the field — do not force a fit. Pick the BEST layer for the finding's primary trust boundary, even when a finding could plausibly span two layers; consistency across runs matters more than perfect taxonomy.
+
+### Auto-remediation patches (opt-in)
+
+The `patch` field is populated **only when the caller's prompt contains a `Patches mode: enabled` directive** (the `/security-review` slash command injects this when invoked with `--patches`). When the directive is absent, OMIT the `patch` field entirely so the JSON document stays byte-identical for callers that don't opt in.
+
+When the directive is present, emit a `patch` field on a finding ONLY when ALL of the following hold:
+
+1. The fix is surgical — one to twenty lines of change, contained to the file at `finding.file`, no new imports/requires, no new dependencies, no API contract changes.
+2. The fix is unambiguous — there is one obviously-correct shape of the change. If the reviewer is choosing between two plausible fixes, OMIT the patch and let the human decide via the `remediation` prose.
+3. The fix is verifiable from the input alone — you have read the lines around `finding.line` and can produce a diff with at least 3 lines of unchanged context above and below the change.
+
+When any of the three conditions fails, OMIT the `patch` field on that finding. The agent must NOT inflate patches to look thorough — empty/missing `patch` on a finding is the correct output for refactor-class fixes, architecture-class fixes, or fixes that require changes across multiple files.
+
+Patch format: standard unified diff with the `---` / `+++` file-path header lines and at least one `@@` hunk header. Use `a/<path>` and `b/<path>` prefixes (the canonical git-apply format) where `<path>` is the same value as the finding's `file` field. The slash command's renderer relies on those prefixes to produce a fenced ```diff block beneath the `Fix:` line.
 
 ## Severity guidance
 

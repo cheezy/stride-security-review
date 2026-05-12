@@ -44,6 +44,10 @@ In any git repository, run:
 /security-review --baseline               # auto-detect .security-review-baseline.json in repo root
 /security-review --baseline ci.json       # explicit baseline path
 /security-review --update-baseline        # rewrite the baseline from current findings
+
+# Auto-remediation patches (--patches) — emit surgical-fix diffs alongside findings
+/security-review --patches                # diff mode + per-finding patch suggestions
+/security-review --patches --json         # raw JSON includes the patch field
 ```
 
 Diff mode answers *"is this change safe to merge?"* — invoke it before pushing a PR. Full mode answers *"what latent issues are in this codebase right now?"* — invoke it when onboarding the plugin onto an existing repo, or on a periodic posture-check cadence. MAESTRO mode answers *"which architectural layer needs the most attention?"* — invoke it on codebases that wire LLMs / agents / Model Context Protocol clients into the request flow, so findings can be grouped by the seven-layer model from Cloud Security Alliance's MAESTRO framework. The flags compose: `--maestro --full --json lib/` is valid. The output JSON schema is identical in diff and full modes; `--maestro` is the one flag that adds an optional field (`maestro_layer`) to each finding when set.
