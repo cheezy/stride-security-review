@@ -28,6 +28,12 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `github_workflow_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — GitHub Actions referencing third-party actions by `@v4` / `@main` floats instead of SHA. GitHub-Actions ecosystem coverage.
 - [ ] `gitlab_ci_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — GitLab CI `include` referencing a remote pipeline by branch/tag. GitLab CI ecosystem coverage — proves the rule is platform-neutral.
 
+### Framework-aware rule packs
+
+- [ ] `django_mark_safe_xss.py` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Django view wraps `request.GET.get("bio")` with `mark_safe`. Django/Python rule pack.
+- [ ] `phoenix_raw_xss.ex` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Phoenix LiveView renders user-supplied `q` via `Phoenix.HTML.raw`. Phoenix/Elixir rule pack.
+- [ ] `rails_html_safe_xss.rb` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Rails controller exposes `params[:comment]` for `.html_safe` rendering in the corresponding view. Rails/Ruby rule pack.
+
 ## How to run the smoke test
 
 1. In a Claude Code session with the security-review plugin installed, `cd` into a clean clone of the security-review repo.

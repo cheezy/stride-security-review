@@ -88,6 +88,16 @@ The `security-reviewer` agent (see [`agents/security-reviewer.md`](agents/securi
 | Insecure configuration | CORS `*` with credentials, disabled CSRF, debug mode in prod, missing security headers, disabled cert verification |
 | Supply chain | Floating-tag container base images, `curl \| sh` installers, CI/CD references by branch/tag instead of immutable SHA, manifest/lockfile drift, typosquat or hallucinated package names — multi-platform (Docker, GitHub Actions, GitLab CI, CircleCI, Bitbucket Pipelines, Jenkins) and multi-ecosystem (npm/PyPI/RubyGems/Hex/crates.io/Maven/NuGet/Packagist/Go modules) |
 
+In addition to the universal classes above, three framework-specific rule packs ship by default — they activate based on file extension AND import detection (never extension alone):
+
+| Pack | Activates on | Idiomatic rules |
+|---|---|---|
+| Django / Python | `.py` with `django.*` / `rest_framework` / `django.db` imports | `mark_safe` on user input, `extra` / `raw()` query interpolation, CSRF disabled, `DEBUG=True` in prod settings, mass-assignment via `cleaned_data` |
+| Phoenix / Elixir | `.ex` / `.exs` / `.heex` / `.eex` with `Phoenix.LiveView` / `Phoenix.Controller` / `Plug.Conn` / `Ecto.Query` / `Phoenix.HTML` references | `Phoenix.HTML.raw/1` on user-controlled data, missing `force_ssl`, `Plug.CSRFProtection` disabled, `Ecto.Query.fragment` with string interpolation, LiveView event handler trusting `phx-value-id` without re-scoping |
+| Rails / Ruby | `.rb` / `.erb` with `ActionController` / `ActiveRecord` / `ApplicationController` references | `html_safe` / `raw()` on user input, `find_by_sql` with interpolation, `protect_from_forgery` disabled, `params.permit!` mass-assignment, `eval` / `send` / `instance_eval` with user input |
+
+Each pack's rules map to one of the universal vulnerability classes — there are NO per-framework enum values. Adding a fourth pack (Spring, Express, Gin, Laravel, FastAPI, etc.) follows the documented template in the agent prompt.
+
 For codebases that integrate LLMs, AI agents, or Model Context Protocol clients, five additional MAESTRO-derived classes activate (the file must import a recognized LLM/agent/MCP SDK in any language — Python, JavaScript/TypeScript, Go, Ruby, Elixir, Java/Kotlin all supported):
 
 | Class | Examples |

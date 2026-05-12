@@ -44,6 +44,52 @@ If the mode tag is missing, assume `diff` — that is the historical default and
 | **XSS and code execution** | Reflected/stored/DOM XSS sinks. `dangerouslySetInnerHTML`, `v-html`, `innerHTML` with untrusted data. Server-side template injection. Deserialization of untrusted data (`pickle`, `yaml.load`, `Marshal.load`, `ObjectInputStream`). |
 | **Insecure configuration** | CORS `*` with credentials. Disabled CSRF protection on state-changing endpoints. Debug mode in production paths. Permissive default file permissions. Missing security headers in code that builds responses. Disabled certificate verification. |
 
+## Framework-aware rule packs
+
+For codebases written in a specific web framework, additional idiom-level rules apply on top of the universal vulnerability classes. Each rule pack activates only when the file under review shows a signal characteristic of that framework — file extension AND import detection, not extension alone. Rules in each pack map to one of the existing universal vulnerability_class values; framework-specific rule packs do NOT introduce new enum values.
+
+Subsections below are in alphabetical order by pack name (Django/Python, Phoenix/Elixir, Rails/Ruby) to avoid implying any single stack is the canonical example. Adding a fourth pack (Spring, Express, Gin, Laravel, FastAPI, etc.) follows the same template.
+
+### Django/Python rule pack
+
+**Activation:** the file's extension is `.py` AND the file imports or references one of: `django.*`, `from rest_framework`, `from django.db`, `from django.http`, `from django.shortcuts`. Optional secondary signal: a sibling `manage.py` or `settings.py`.
+
+| Rule | Maps to | What to look for |
+|---|---|---|
+| `mark_safe(user_input)` | xss_or_code_exec | `django.utils.safestring.mark_safe()` applied to user-controlled text. The `mark_safe` marker disables Django's auto-escape; analogous to Phoenix `raw/1` or Rails `html_safe`. |
+| `extra(where=...)` / `raw()` query with interpolation | injection | `Model.objects.extra(where=["col = %s" % user_input])` or `Model.objects.raw("SELECT ... " + user_input)`. The Django ORM's `extra` and `raw` parameters bypass the parameterized-query default. |
+| `CSRF disabled` | insecure_config | `@csrf_exempt` decorator on a state-changing view, or `MIDDLEWARE` setting that omits `django.middleware.csrf.CsrfViewMiddleware`. |
+| `DEBUG = True` in production-bound settings | insecure_config | `DEBUG = True` outside an explicit dev branch in `settings.py`. Production DEBUG leaks stack traces with environment variables. |
+| Mass-assignment via `Form.cleaned_data` direct write | input_validation | Form/serializer write that copies the entire `cleaned_data` dict into a model instance without an allow-list. Analog of Rails `params.permit!` problem. |
+
+### Phoenix/Elixir rule pack
+
+**Activation:** the file's extension is `.ex`, `.exs`, `.heex`, or `.eex` AND the file references one of: `Phoenix.LiveView`, `Phoenix.Controller`, `Plug.Conn`, `Ecto.Query`, `Phoenix.HTML`. Optional secondary signal: a sibling `mix.exs` or `lib/<app>_web.ex`.
+
+| Rule | Maps to | What to look for |
+|---|---|---|
+| `Phoenix.HTML.raw/1` on user-controlled data | xss_or_code_exec | `raw()` (or aliased) called on a value originating from `params`, a user-supplied gettext key, or any LiveView assign that flows from the socket. Phoenix's auto-escape is disabled at this site. |
+| Missing `force_ssl` / HTTPS scheme in prod | insecure_config | Phoenix Endpoint config in `config/runtime.exs` or `config/prod.exs` lacks `force_ssl: [hsts: true]` AND the `url: [host: ..., port: ...]` block lacks an `https` scheme. Prod requests can be served over plaintext. |
+| `Plug.CSRFProtection` disabled | insecure_config | A pipeline that omits `:protect_from_forgery` plug while serving state-changing routes, or a `Plug.CSRFProtection.skip_csrf_protection/1` call on a state-changing pipeline. |
+| `Ecto.Query.fragment` with string interpolation | injection | A `fragment("...#{user_input}...")` (literal interpolation) call, distinct from the safe `fragment("? = ?", field, ^user_input)` (positional binding) form. The interpolated form bypasses Ecto's parameterized-query default. |
+| LiveView event handler trusts `phx-value-id` without re-scoping | authorization | A `handle_event` clause that calls `Repo.get(Schema, id)` or `Repo.get!(Schema, id)` without re-verifying the loaded record belongs to `socket.assigns.board` (or whichever scope is mounted). Common shape in multi-tenant LiveView apps. |
+
+### Rails/Ruby rule pack
+
+**Activation:** the file's extension is `.rb` or `.erb` AND the file references one of: `ActionController`, `ActiveRecord`, `ApplicationController`, `ApplicationRecord`, `Rails.application`. Optional secondary signal: a sibling `Gemfile` or `config/application.rb`.
+
+| Rule | Maps to | What to look for |
+|---|---|---|
+| `html_safe` or `raw()` on user-controlled data | xss_or_code_exec | `.html_safe` called on a `params[*]` value, or `raw()` wrapping the same. ERB's `<%= ... %>` auto-escapes; this marker disables it. |
+| `find_by_sql` with string interpolation | injection | `Model.find_by_sql("SELECT * FROM x WHERE y = '#{params[:y]}'")` or any direct interpolation into the raw-SQL argument. Use `find_by_sql(["SELECT ... WHERE y = ?", params[:y]])` parameterized form. |
+| `protect_from_forgery` disabled | insecure_config | A controller that explicitly calls `skip_forgery_protection` or `protect_from_forgery with: :null_session` on a state-changing action without an explicit auth-token check. |
+| `params.permit!` mass-assignment | input_validation | `params.permit!` (without an allow-list) feeding into `Model.create` or `Model.update`. Lets any client-controlled attribute write to the model. |
+| `eval`/`send`/`instance_eval` with user input | xss_or_code_exec | `eval(params[:expr])`, `obj.send(params[:method])`, etc. — classic Ruby dynamic-dispatch with attacker-controlled symbol/string. |
+
+### Adding a new framework pack
+
+A fourth pack follows the same template: (1) define a unique activation predicate using file extension AND import/identifier signal (never file path alone), (2) list 4–6 idiomatic rules mapped to existing universal vulnerability_class values, (3) reference any prior-art SAST tool for that framework as context (Sobelow for Phoenix, Brakeman for Rails, Bandit for Django, gosec for Go, eslint-plugin-security for Node, etc.) — but do NOT depend on it; the reviewer's semantic-analysis value is detecting what those tools miss. Pack subsections must stay in alphabetical order by pack name so the doc reads even-handed.
+
 ## Supply-chain checks
 
 Activate this rule pack whenever a reviewed file's path or filename matches a container manifest, CI/CD workflow, or language-ecosystem manifest/lockfile pair. The signal is language-neutral by design — the same five rules apply across every major ecosystem.
