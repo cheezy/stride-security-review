@@ -18,7 +18,9 @@ The user invoked you with the arguments `$ARGUMENTS`. Treat them as a space-sepa
 - If `--json` appears anywhere in the list, set `JSON_MODE=true` and remove that token from the list. Otherwise `JSON_MODE=false`.
 - If `--maestro` appears anywhere in the list, set `MAESTRO_MODE=true` and remove that token from the list. Otherwise `MAESTRO_MODE=false`. This activates MAESTRO 7-layer classification — each finding's JSON gains a `maestro_layer` field, and the human-readable output adds a "By MAESTRO layer" subsection grouping findings by architectural layer. When `MAESTRO_MODE=false`, the `maestro_layer` field MUST NOT appear in the JSON document (preserves byte-identical output for callers that don't opt in). See [Cloud Security Alliance's MAESTRO framework](https://cloudsecurityalliance.org/blog/2025/02/06/agentic-ai-threat-modeling-framework-maestro) for the seven-layer model.
 - If `--rci` appears, set `RCI_PASSES` to the value of the NEXT token if that token parses as an integer in `1..3` — otherwise default `RCI_PASSES=1`. If `--rci` is absent, `RCI_PASSES=0` (no recursive criticism, single dispatch as today). RCI = Recursive Criticism & Improvement: after the standard dispatch produces a findings document, run `RCI_PASSES` additional critique-and-refine dispatches that receive both the prior pass's JSON AND the original input, and asks the agent to drop false positives and surface anything that was missed. OpenSSF documents this technique as reducing security weaknesses by up to an order of magnitude. The cap of 3 bounds cost; `RCI_PASSES > 3` is silently clamped. Combining `--rci` with `--full` is supported but expensive — N=2 over a 41-batch full scan is 41+82 = 123 agent dispatches. See Step 4.5 below for the iteration loop.
-- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro --rci 2 lib/` is valid.
+- If `--baseline` appears, treat the NEXT token as the path to a baseline-suppression file and set `BASELINE_PATH` to that token. Otherwise auto-detect by looking for `.security-review-baseline.json` in the repo root — if present, set `BASELINE_PATH` to that path; if absent, set `BASELINE_PATH=""` (no suppression). A malformed baseline file produces a one-line warning (`Baseline file malformed — proceeding without suppression`) and `BASELINE_PATH=""`. Baseline file schema is `{"schema_version": 1, "generated_at": "<ISO8601>", "acknowledged": [{"fingerprint": "<hex>", "vulnerability_class": "...", "file": "...", "line": 42, "note": "human note"}]}`. Each entry's `fingerprint` is `SHA256(vulnerability_class + "|" + file + "|" + line + "|" + first_80_chars_of_description)`. See Step 4.6 below for the suppression merge.
+- If `--update-baseline` appears, set `UPDATE_BASELINE=true`. After Step 4.6 produces the final findings document, write a baseline file at `BASELINE_PATH` (or `.security-review-baseline.json` if unset) containing every finding from the current run, then print one line: `Baseline updated: <path> (N entries)`. If a baseline already exists at that path, prompt the user with one line: `Overwrite existing baseline at <path>? [y/N]` — abort without writing on anything other than `y`/`Y`.
+- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro --rci 2 --baseline ci-baseline.json lib/` is valid.
 
 When `FULL_MODE=false`, an empty path list means "all changed files in the working tree." When `FULL_MODE=true`, an empty path list means "every tracked file in the repo."
 
@@ -190,6 +192,19 @@ After the loop, the final document goes to Step 5. If a pass produces a smaller-
 
 **Cost note:** every `--rci` pass roughly doubles the agent-call cost. `--rci 1` over a single diff is 2 dispatches; `--rci 3 --full` over a 41-batch scan is 41 + 41*3 = 164 dispatches. The slash command does not warn about this — it's the user's choice; the help text and README document the trade-off.
 
+### Step 4.6: Baseline suppression (when `BASELINE_PATH` is non-empty)
+
+After the findings document is final (post-Step 4.5 if RCI ran, else post-Step 4), apply baseline suppression if `BASELINE_PATH` resolved to an existing file.
+
+1. Load the baseline file via the `Read` tool. Parse as JSON. If parse fails OR the document doesn't conform to the schema `{schema_version: 1, acknowledged: [...]}`, print `Baseline file malformed — proceeding without suppression` and skip to Step 5.
+2. Build a set of acknowledged fingerprints from `baseline.acknowledged[*].fingerprint`.
+3. For each finding in the working document, compute `fingerprint = SHA256(vulnerability_class + "|" + file + "|" + line + "|" + first_80_chars_of_description)`. Use lowercase hex output.
+4. Drop every finding whose fingerprint is in the acknowledged set. Add the dropped count to `summary.suppressed_count` (an integer, OMITTED entirely when no baseline is in play so byte-identical legacy output is preserved for non-baseline callers).
+5. Recompute `summary.findings_by_severity` from the post-suppression findings list so the severity counters match the rendered output.
+6. If `UPDATE_BASELINE=true`, AFTER suppression has run, gather every finding from the current run (the POST-suppression list), recompute their fingerprints, and write a new baseline file at `BASELINE_PATH` (defaulting to `.security-review-baseline.json` if unset). The file's `generated_at` is the current UTC ISO-8601 timestamp. If a baseline already exists at that path, prompt for overwrite confirmation as described in Step 1.
+
+The fingerprint MUST be stable across runs: it must NOT incorporate severity, confidence, remediation prose, or any other field that the agent might revise between runs. The four-part hash (class + file + line + first-80-chars-of-description) was chosen so a finding whose description text has trivial whitespace edits still collides with a prior fingerprint; a renamed file or a moved line legitimately produces a fresh fingerprint, which the human reviewer should re-audit.
+
 ### Step 5: Render the output
 
 **If `JSON_MODE=true`:** Print the raw JSON document to stdout. No header, no formatting, no trailing prose. Other tools may pipe the output, so emit only the JSON. This output is byte-for-byte identical in diff and full modes — the schema is the contract and is mode-independent. Stop.
@@ -200,7 +215,7 @@ After the loop, the final document goes to Step 5. If a pass produces a smaller-
    - In **diff mode** (`FULL_MODE=false`): `Security review — N findings across M files`. `M` is the changed-file count from Step 2a.
    - In **full mode** (`FULL_MODE=true`): `Security review (full scan) — N findings across M files`. `M` is the post-filter file count from Step 2b — i.e., the count actually handed to the agent, which already excludes binaries and oversized files.
    - When `MAESTRO_MODE=true`, append the suffix ` — MAESTRO classification active` to the header so the reader knows the per-finding `maestro_layer` field is populated.
-2. The `summary.findings_by_severity` counts as a single line: `Critical: a   High: b   Medium: c   Low: d   Info: e`. Identical in both modes.
+2. The `summary.findings_by_severity` counts as a single line: `Critical: a   High: b   Medium: c   Low: d   Info: e`. Identical in both modes. When baseline suppression ran (`summary.suppressed_count > 0`), append a second line: `Suppressed by baseline: <N>` so the user knows how many findings were filtered out of the rendered report.
 3. For each severity tier in descending order (critical → high → medium → low → info), if the tier has any findings, print a section:
    - A heading: `## Critical` (or `## High`, etc.).
    - For each finding in that tier, print:
