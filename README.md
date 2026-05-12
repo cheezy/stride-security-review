@@ -98,6 +98,8 @@ In addition to the universal classes above, three framework-specific rule packs 
 
 Each pack's rules map to one of the universal vulnerability classes — there are NO per-framework enum values. Adding a fourth pack (Spring, Express, Gin, Laravel, FastAPI, etc.) follows the documented template in the agent prompt.
 
+A dedicated **CI/CD pipeline rule pack** activates on recognized pipeline files across eight platforms (alphabetical): Azure Pipelines, Bitbucket Pipelines, CircleCI, Drone, GitHub Actions, GitLab CI, Jenkins, Tekton. The same five rules apply to every platform: (1) external action / orb / template not pinned to an immutable SHA, (2) overly-broad permissions or scopes, (3) untrusted-ref or fork-PR build patterns, (4) secrets exposed alongside attacker-controlled input, (5) expression / interpolation injection in shell-step bodies. Activation is by file path (`.github/workflows/*.yml`, `.gitlab-ci.yml`, `.circleci/config.yml`, `bitbucket-pipelines.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.drone.yml`, `.tekton/*.yaml`) — generic YAML never triggers these rules. Adding a ninth platform means listing its file path and walking the five existing rules; the rule count stays fixed.
+
 For codebases that integrate LLMs, AI agents, or Model Context Protocol clients, five additional MAESTRO-derived classes activate (the file must import a recognized LLM/agent/MCP SDK in any language — Python, JavaScript/TypeScript, Go, Ruby, Elixir, Java/Kotlin all supported):
 
 | Class | Examples |

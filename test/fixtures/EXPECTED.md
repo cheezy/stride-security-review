@@ -34,6 +34,14 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `phoenix_raw_xss.ex` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Phoenix LiveView renders user-supplied `q` via `Phoenix.HTML.raw`. Phoenix/Elixir rule pack.
 - [ ] `rails_html_safe_xss.rb` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Rails controller exposes `params[:comment]` for `.html_safe` rendering in the corresponding view. Rails/Ruby rule pack.
 
+### CI/CD pipeline rule pack
+
+- [ ] `ci_cd/github_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — two unpinned action references (`@v4`, `@main`); third step pinned to a 40-hex SHA must NOT trigger (negative case). GitHub Actions ecosystem.
+- [ ] `ci_cd/github_expression_injection.yml` → injection (high), `cwe: ["CWE-94", "CWE-78"]`, `owasp: ["A03:2021"]` — `${{ github.event.issue.title }}` and `${{ github.event.issue.body }}` interpolated into shell `run:` steps. GitHub Actions Rule 5.
+- [ ] `ci_cd/gitlab_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — two `include:` references using branch / tag refs instead of SHA. GitLab CI ecosystem.
+- [ ] `ci_cd/circleci_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — orb references using semver (`@4.1.0`) and `@volatile`; both are mutable. CircleCI ecosystem.
+- [ ] `ci_cd/bitbucket_secrets_in_fork.yml` → insecure_config (high) AND insecure_config (high), `cwe: ["CWE-732", "CWE-200"]`, `owasp: ["A05:2021", "A01:2021"]` — pull-request pipeline runs with `deployment: production` (exposes the deploy secret on fork-triggered builds, Rule 3) AND embeds `$BITBUCKET_PR_TITLE` in the same `curl` call that carries `$PRODUCTION_DEPLOY_TOKEN` (Rule 4). Bitbucket Pipelines ecosystem.
+
 ## How to run the smoke test
 
 1. In a Claude Code session with the security-review plugin installed, `cd` into a clean clone of the security-review repo.
