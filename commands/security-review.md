@@ -248,18 +248,39 @@ Do not invent any additional commentary, suggestions, or follow-up questions. Th
 
 ## Operational rules
 
-- **Diff-aware is the whole point.** Never analyze the entire repository by default. The diff scopes the work and keeps invocations fast.
-- **Handle both staged and unstaged.** The user should not have to `git add` first. Always use `git diff HEAD`.
+- **Honor every flag from Step 1.** `--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--update-baseline`, and `--patches` are all first-class options. If Step 1 sets `FULL_MODE=true`, you MUST execute Step 2b and Step 4b — do NOT fall back to diff mode under any circumstance, and do NOT invent a "this looks small, I'll just diff it" shortcut. The user opted in by passing the flag; honor it.
+- **Diff mode is the default, not the only mode.** When no `--full` flag is present, scope to the working-tree diff against `HEAD` (Step 2a). When `--full` IS present, scope to every tracked text file under the size cap (Step 2b). Both modes are supported; neither is a footgun.
+- **Diff-mode commands stay diff-mode.** The `git diff HEAD` invocations in Step 2a are diff-mode only — in full mode you use `git ls-files` (Step 2b) and never call `git diff`. Do not mix the two pipelines.
 - **Don't embed the agent prompt here.** The `security-reviewer` agent owns its own prompt — your job is to gather the input and format the output, not to re-specify the analysis methodology.
 - **Don't second-guess the agent's findings.** If the agent returns a finding you don't agree with, print it anyway. The user is the one who decides whether to act.
-- **Binary files** are skipped automatically by `git diff` for diff content; the changed-files list will include them but the agent will see only the header lines. That is the correct behavior — security review on binary blobs is out of scope.
+- **Binary files** are skipped automatically by `git diff` for diff content; the changed-files list will include them but the agent will see only the header lines. In full mode, binaries are explicitly filtered by the `grep -Il` step in Step 2b. Security review on binary blobs is out of scope in both modes.
+
+## Name-collision warning
+
+Claude Code ships with a built-in `/security-review` command (a diff-only, single-prompt review). It does NOT understand any of this plugin's flags — `--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--patches` are silently ignored.
+
+When both commands exist on the user's machine, the unqualified `/security-review` resolves to the built-in, not this plugin. Users who want this plugin's behavior MUST invoke it with the explicit namespace:
+
+```
+/security-review:security-review --full
+```
+
+The plugin's command name cannot transparently override the built-in from inside this file; the namespaced form is the supported entry point.
 
 ## Examples
 
+All examples below use the namespaced form `/security-review:security-review` to bypass the built-in Claude Code command of the same short name. See the "Name-collision warning" section above.
+
 | Invocation | Effect |
 |---|---|
-| `/security-review` | Reviews all working-tree changes (staged + unstaged) against HEAD. |
-| `/security-review lib/auth.ex` | Reviews changes to `lib/auth.ex` only. |
-| `/security-review lib/ test/` | Reviews changes under `lib/` and `test/`. |
-| `/security-review --json` | Same as the first, but prints raw JSON. |
-| `/security-review --json lib/auth.ex` | Path-scoped review, raw JSON output. |
+| `/security-review:security-review` | Reviews all working-tree changes (staged + unstaged) against HEAD (diff mode). |
+| `/security-review:security-review lib/auth.ex` | Reviews changes to `lib/auth.ex` only (diff mode). |
+| `/security-review:security-review lib/ test/` | Reviews changes under `lib/` and `test/` (diff mode). |
+| `/security-review:security-review --json` | Diff mode, raw JSON output. |
+| `/security-review:security-review --json lib/auth.ex` | Path-scoped diff review, raw JSON output. |
+| `/security-review:security-review --full` | Full-codebase scan: every tracked text file under the size cap, batched in groups of 10. |
+| `/security-review:security-review --full lib/` | Full-codebase scan scoped to `lib/`: every tracked text file under `lib/`. |
+| `/security-review:security-review --full --json` | Full-codebase scan, raw JSON output. |
+| `/security-review:security-review --full --maestro` | Full scan with MAESTRO 7-layer classification per finding. |
+| `/security-review:security-review --full --rci 2` | Full scan followed by 2 recursive-criticism passes. |
+| `/security-review:security-review --full --baseline ci-baseline.json` | Full scan with suppression file applied. |

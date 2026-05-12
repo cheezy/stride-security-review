@@ -4,6 +4,12 @@ All notable changes to the `security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-05-11
+
+### Fixed
+
+- **`--full` (and every other flag) silently ignored when users invoked `/security-review` without the plugin namespace.** Claude Code ships with a built-in `/security-review` command that handles a diff-only review and does not understand any of this plugin's flags (`--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--update-baseline`, `--patches`). When both commands exist on a machine, the unqualified name resolves to the built-in, so users typing `/security-review --full` got a diff-only review with no error message. The plugin's command body already parses `--full` correctly when actually invoked; the symptom was a name-collision, not a parsing bug. This release documents the conflict and standardizes every example, README block, skill block, and changelog entry on the namespaced invocation form `/security-review:security-review`. The command body also gains an explicit "Honor every flag from Step 1" operational rule that forbids falling back to diff mode when `FULL_MODE=true`, and a "Name-collision warning" section pointing readers at the namespaced form. Files: `commands/security-review.md`, `agents/security-reviewer.md`, `README.md`, `skills/security-review-essentials/SKILL.md`.
+
 ## [1.2.1] - 2026-05-11
 
 ### Fixed

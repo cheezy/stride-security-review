@@ -2,7 +2,7 @@
 
 **AI-powered security review of code changes as a Claude Code plugin.**
 
-Run a single slash command — `/security-review` — to get a structured, severity-graded list of security findings on whatever you've changed. Powered by a dedicated `security-reviewer` agent that uses semantic analysis, not pattern matching, and filters out low-impact noise so the findings you see are the ones worth acting on.
+Run a single slash command — `/security-review:security-review` — to get a structured, severity-graded list of security findings on whatever you've changed. Powered by a dedicated `security-reviewer` agent that uses semantic analysis, not pattern matching, and filters out low-impact noise so the findings you see are the ones worth acting on.
 
 ## Installation
 
@@ -13,41 +13,47 @@ Run a single slash command — `/security-review` — to get a structured, sever
 
 The plugin auto-discovers the slash command, the agent, and the skill on install. No further configuration needed.
 
+## Important: invocation form
+
+Claude Code ships with a built-in `/security-review` command (a diff-only review that does NOT understand this plugin's flags — `--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--patches` are silently ignored). When both commands are present on a machine, the unqualified name `/security-review` resolves to the built-in.
+
+**To invoke this plugin you MUST use the namespaced form** `/security-review:security-review`. All examples below use that form.
+
 ## Quick start
 
 In any git repository, run:
 
 ```text
 # Diff mode (default) — review what's changed against HEAD
-/security-review                  # all working-tree changes (staged + unstaged) vs HEAD
-/security-review lib/auth.ex      # scope to one file
-/security-review lib/ test/       # scope to directories
-/security-review --json           # raw JSON output for piping into tools
-/security-review --json lib/foo   # path-scoped, raw JSON
+/security-review:security-review                  # all working-tree changes (staged + unstaged) vs HEAD
+/security-review:security-review lib/auth.ex      # scope to one file
+/security-review:security-review lib/ test/       # scope to directories
+/security-review:security-review --json           # raw JSON output for piping into tools
+/security-review:security-review --json lib/foo   # path-scoped, raw JSON
 
 # Full mode (--full) — review the codebase end-to-end (new in v1.1.0)
-/security-review --full           # every tracked file in the repo
-/security-review --full lib/      # full scan scoped to a path
-/security-review --full --json    # full scan, raw JSON output
+/security-review:security-review --full           # every tracked file in the repo
+/security-review:security-review --full lib/      # full scan scoped to a path
+/security-review:security-review --full --json    # full scan, raw JSON output
 
 # MAESTRO 7-layer classification (--maestro) — group findings by agentic-AI threat layer
-/security-review --maestro                # classify each finding by MAESTRO layer
-/security-review --maestro --full         # full scan + layer classification
-/security-review --maestro --json lib/    # raw JSON with maestro_layer fields
+/security-review:security-review --maestro                # classify each finding by MAESTRO layer
+/security-review:security-review --maestro --full         # full scan + layer classification
+/security-review:security-review --maestro --json lib/    # raw JSON with maestro_layer fields
 
 # Recursive Criticism & Improvement (--rci [N]) — run N additional critique passes
-/security-review --rci                    # one extra critique pass after the first dispatch
-/security-review --rci 2                  # two extra critique passes (clamped to 3)
-/security-review --rci --full             # critique pass over a full scan (expensive)
+/security-review:security-review --rci                    # one extra critique pass after the first dispatch
+/security-review:security-review --rci 2                  # two extra critique passes (clamped to 3)
+/security-review:security-review --rci --full             # critique pass over a full scan (expensive)
 
 # Baseline suppression (--baseline) — suppress already-acknowledged findings
-/security-review --baseline               # auto-detect .security-review-baseline.json in repo root
-/security-review --baseline ci.json       # explicit baseline path
-/security-review --update-baseline        # rewrite the baseline from current findings
+/security-review:security-review --baseline               # auto-detect .security-review-baseline.json in repo root
+/security-review:security-review --baseline ci.json       # explicit baseline path
+/security-review:security-review --update-baseline        # rewrite the baseline from current findings
 
 # Auto-remediation patches (--patches) — emit surgical-fix diffs alongside findings
-/security-review --patches                # diff mode + per-finding patch suggestions
-/security-review --patches --json         # raw JSON includes the patch field
+/security-review:security-review --patches                # diff mode + per-finding patch suggestions
+/security-review:security-review --patches --json         # raw JSON includes the patch field
 ```
 
 Diff mode answers *"is this change safe to merge?"* — invoke it before pushing a PR. Full mode answers *"what latent issues are in this codebase right now?"* — invoke it when onboarding the plugin onto an existing repo, or on a periodic posture-check cadence. MAESTRO mode answers *"which architectural layer needs the most attention?"* — invoke it on codebases that wire LLMs / agents / Model Context Protocol clients into the request flow, so findings can be grouped by the seven-layer model from Cloud Security Alliance's MAESTRO framework. The flags compose: `--maestro --full --json lib/` is valid. The output JSON schema is identical in diff and full modes; `--maestro` is the one flag that adds an optional field (`maestro_layer`) to each finding when set.
@@ -178,14 +184,14 @@ The agent always returns a single fenced ```json document conforming to:
 
 ## Full-codebase scan mode
 
-The default `/security-review` invocation reviews the working-tree diff against `HEAD`. That answers *"is this PR safe to merge?"* — but not *"what latent issues are in this codebase right now?"* The `--full` flag (added in v1.1.0) answers the second question by reviewing whole files rather than hunks.
+The default `/security-review:security-review` invocation reviews the working-tree diff against `HEAD`. That answers *"is this PR safe to merge?"* — but not *"what latent issues are in this codebase right now?"* The `--full` flag (added in v1.1.0) answers the second question by reviewing whole files rather than hunks.
 
 Typical reasons to reach for `--full`: onboarding the plugin onto an existing repo (establish a baseline before you start gating PRs); a periodic posture check (quarterly, or on a cron); vendoring or forking an upstream codebase (review the imported code end-to-end before integrating); or a class-wide audit where the changed code is not the unit of interest. For PR-time gating, stay in diff mode — it is faster and the right shape for that question.
 
 ```text
-/security-review --full                     # review every tracked file
-/security-review --full lib/ apps/web/      # scope to listed paths
-/security-review --full --json              # raw JSON for piping
+/security-review:security-review --full                     # review every tracked file
+/security-review:security-review --full lib/ apps/web/      # scope to listed paths
+/security-review:security-review --full --json              # raw JSON for piping
 ```
 
 `--full` is **additive** — it composes with path arguments and with `--json`. Diff mode remains the default and its behavior is unchanged. The output JSON schema is identical in both modes, so any tool already consuming the diff-mode JSON continues to work against a `--full` run.
@@ -224,10 +230,10 @@ The skill at [`skills/security-review-essentials/SKILL.md`](skills/security-revi
 
 ## Composing with other plugins
 
-The `--json` flag makes `/security-review` pipeable. Examples:
+The `--json` flag makes `/security-review:security-review` pipeable. Examples:
 
-- A Stride completion hook can run `/security-review --json` and refuse to mark a task `done` if a critical finding is present.
-- A CI gate can run `/security-review --full --json` on a schedule to track the codebase-wide finding count over time without coupling to any one PR.
+- A Stride completion hook can run `/security-review:security-review --json` and refuse to mark a task `done` if a critical finding is present.
+- A CI gate can run `/security-review:security-review --full --json` on a schedule to track the codebase-wide finding count over time without coupling to any one PR.
 - A CI gate can call the agent directly (without the slash command) by importing the agent prompt and feeding it a diff from `git diff origin/main`.
 - A dashboard can ingest the JSON across many runs and chart the per-class trend.
 
