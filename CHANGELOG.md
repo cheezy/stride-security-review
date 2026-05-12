@@ -4,6 +4,12 @@ All notable changes to the `security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-11
+
+### Fixed
+
+- **`--full` mode now runs unattended under the slash command's `allowed-tools` whitelist.** The v1.1.0 enumeration documented a piped `git ls-files | while ...; do grep -Iq ...; wc -c < ...; done` loop. Claude Code's permission system matches the full Bash command string against `allowed-tools` prefixes, so a compound pipeline did not match any single entry and required a permission prompt on every invocation (or was skipped outright by the model, falling back to diff-mode behavior). Step 2b now uses two single-shot batched calls — `grep -Il . <files...>` for the binary filter and `wc -c <files...>` for the size filter — each covered by a dedicated `Bash(grep:*)` / `Bash(wc:*)` entry. The 256 KiB threshold and null-byte-in-prefix heuristic are unchanged; only the execution shape changes. Files: `commands/security-review.md`, `README.md`.
+
 ## [1.2.0] - 2026-05-11
 
 A major capability release. Every existing finding shape stays valid; every new feature is opt-in via a flag, so callers that consumed v1.1.0 JSON continue to work without modification.

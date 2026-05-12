@@ -1,6 +1,6 @@
 ---
 description: AI-powered security review of the current git diff (or specified paths). Dispatches the security-reviewer agent and prints findings grouped by severity.
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git ls-files:*), Bash(git rev-parse:*), Read, Glob, Grep, Agent
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git ls-files:*), Bash(git rev-parse:*), Bash(grep:*), Bash(wc:*), Read, Glob, Grep, Agent
 argument-hint: "[--full] [--json] [path ...]"
 ---
 
@@ -67,37 +67,31 @@ You must produce a filtered list of `(file_path, file_contents)` records that th
 
   Pass the user's paths verbatim after the `--` separator. `git ls-files` honors `.gitignore`, sparse-checkout, and untracked-exclusions automatically — that is why we use it instead of `find` or a filesystem walk. Untracked files are intentionally out of scope; if a user wants them reviewed they can run `git add -N` first.
 
-- **Filter out binary files.** For each enumerated path, drop it from the list if it is binary. The standard test is:
+- **Filter out binary files** with a single-shot `grep` invocation that takes every enumerated path as a separate argument:
 
   ```bash
-  grep -Iq . "$file"
+  grep -Il . <file1> <file2> <file3> ...
   ```
 
-  `grep -I` treats a file as binary when it contains a null byte in the inspected prefix; the exit code is non-zero for binary files and zero for text files. Skip binaries silently — do NOT count them in `files_reviewed` and do NOT dispatch the agent on them.
+  `grep -I` excludes binary files (those with a null byte in the inspected prefix). `grep -l` lists matching files only. With pattern `.` (any non-empty line), the output is the set of non-empty text files. Any candidate that is NOT in grep's stdout is either binary or empty — record it in `files_skipped` with `reason: "binary"`. (Empty files have nothing to review, so treating them as binary-skipped is fine.)
 
-- **Filter out oversized files.** Drop any file whose size exceeds **262,144 bytes (256 KiB)**. The byte size comes from `wc -c < "$file"` (or `stat`); above this threshold the file is almost always generated, vendored, or minified and the agent's signal-to-noise on it collapses. Skip oversized files the same way you skip binaries.
+  For repos with very many tracked files, batch the argument list into chunks of ~50 paths per `grep` call to stay under the OS `ARG_MAX` limit. Each chunk is a single Bash invocation with no pipe; the `allowed-tools` declaration covers it via `Bash(grep:*)`.
 
-- **Putting the enumeration and filters together**, the surviving file list can be produced with this concrete loop (run once, capture stdout). The same loop also records skipped files so they appear in the final summary's `files_skipped` array:
+- **Filter out oversized files** with a single-shot `wc` invocation over the post-binary-filter list:
 
   ```bash
-  git ls-files -- <path1> <path2> ... | while IFS= read -r f; do
-    if ! grep -Iq . "$f" 2>/dev/null; then
-      printf 'SKIP\tbinary\t%s\n' "$f" >&2          # record skipped binaries on stderr
-      continue
-    fi
-    if [ "$(wc -c < "$f")" -gt 262144 ]; then
-      printf 'SKIP\toversize\t%s\n' "$f" >&2        # record skipped oversize files
-      continue
-    fi
-    printf '%s\n' "$f"
-  done
+  wc -c <file1> <file2> <file3> ...
   ```
 
-  When no path arguments were given, omit the `-- <path1> ...` suffix. stdout is the canonical surviving list for the rest of the pipeline; stderr contains the skipped-file records.
+  `wc -c` outputs one `<bytes> <path>` line per file. Parse the output; any file whose byte count exceeds **262,144 bytes (256 KiB)** is oversize — record it in `files_skipped` with `reason: "oversize"` and skip. Above this threshold the file is almost always generated, vendored, or minified and the agent's signal-to-noise on it collapses.
 
-- **Track `files_skipped`.** Parse the stderr `SKIP\t<reason>\t<path>` lines into an array of `{path: <string>, reason: <"binary" | "oversize" | "unreadable">}` objects. Carry this array into the merged document Step 4b produces (see `summary.files_skipped` below). The reason vocabulary is fixed — do not invent additional values. If a file is enumerable but cannot be read (rare; permission denied, IO error during Step 4 content capture), append a `{path, reason: "unreadable"}` entry from Step 4 as well.
+  As with `grep`, batch into chunks of ~50 paths per `wc` call to stay under `ARG_MAX`. Each chunk is a single Bash invocation covered by `Bash(wc:*)`.
 
-- **Capture file contents** for each surviving path. Read each file with the Read tool; you will hand the agent a list of `(file_path, contents)` records in Step 4. The full-mode file count for Step 3 is the length of this surviving list (post-filter).
+- **Why two single-shot calls instead of a per-file loop:** Claude Code's permission system matches the FULL Bash command string against the `allowed-tools` prefix list. A piped while-loop like `git ls-files | while ...; do grep ...; wc ...; done` does not match any single prefix — it gets prompted (or blocked) every invocation. Two batched, pipe-free calls each match a single `allowed-tools` entry cleanly, so the command runs unattended in CI.
+
+- **Track `files_skipped`.** Maintain an in-memory array of `{path: <string>, reason: <"binary" | "oversize" | "unreadable">}` objects as you classify each enumerated path. Carry this array into the merged document Step 4b produces (see `summary.files_skipped` below). The reason vocabulary is fixed — do not invent additional values. If a file survives both filters but cannot be read in the next step (permission denied, IO error), append a `{path, reason: "unreadable"}` entry then.
+
+- **Capture file contents** for each surviving path with the Read tool; you will hand the agent a list of `(file_path, contents)` records in Step 4. The full-mode file count for Step 3 is the length of this surviving list (post-filter).
 
 ### Step 3: Handle the empty-input edge case
 

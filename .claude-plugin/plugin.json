@@ -1,7 +1,7 @@
 {
   "name": "security-review",
   "description": "AI-powered security review for code changes via the /security-review slash command. Two scan modes (diff / --full), multi-ecosystem framework rule packs, multi-platform CI/CD rule pack, MAESTRO 7-layer agentic-AI classification, RCI critique loop, baseline suppression, and surgical-fix patches. Loosely based on anthropics/claude-code-security-review.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "Jeff Morgan",
     "email": "cheezy@letstango.ca"
