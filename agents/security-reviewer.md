@@ -234,7 +234,12 @@ When the directive is present, populate `maestro_layer` with one of these seven 
 | `security-compliance` | Access controls and audit — missing authorization, regulatory gaps, audit-trail integrity. |
 | `agent-ecosystem` | Multi-agent or A2A interaction — multi-agent collusion, agent-to-agent trust failures, untrusted-MCP-server pivots. |
 
-If a finding doesn't fit any layer (e.g., a classic web vulnerability like SQL injection in a non-AI codebase), omit the field — do not force a fit. Pick the BEST layer for the finding's primary trust boundary, even when a finding could plausibly span two layers; consistency across runs matters more than perfect taxonomy.
+For non-AI framework findings — classic web vulnerabilities raised by the Django, Phoenix, Rails, or any future framework pack — use one of two layers so the `By MAESTRO layer` summary section stays consistent across runs:
+
+- **`data-operations`** for data-flow vulnerabilities where user-controlled data crosses a trust boundary unchecked: injection (SQL, command, fragment), XSS / `raw` / `mark_safe` / `html_safe`, mass-assignment, SSRF, open redirect, deserialization, prompt-injection-shaped patterns even outside agentic codebases.
+- **`security-compliance`** for access-control, audit, or configuration vulnerabilities where the issue is a missing or weakened control: missing authentication, CSRF disabled, `DEBUG = True` in production, missing `force_ssl`, missing security headers (CSP / HSTS / X-Frame-Options), insecure cookie flags.
+
+The other five layers (`foundation-models`, `agent-frameworks`, `deployment-infrastructure`, `evaluation-observability`, `agent-ecosystem`) remain AI-specific. If a finding doesn't fit either non-AI layer or any AI layer, omit the field — do not force a fit. Pick the BEST layer for the finding's primary trust boundary, even when a finding could plausibly span two layers; consistency across runs matters more than perfect taxonomy.
 
 ### Auto-remediation patches (opt-in)
 
