@@ -46,6 +46,9 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `phoenix_token_no_max_age.ex` → authentication (high), `cwe: ["CWE-613"]`, `owasp: ["A07:2021"]` — password-reset controller verifies a `Phoenix.Token` once with no `max_age` opt and once with `max_age: :infinity`. Phoenix/Elixir rule pack.
 - [ ] `phoenix_system_cmd_shell.ex` → injection (critical), `cwe: ["CWE-78"]`, `owasp: ["A03:2021"]` — LiveView event handlers run `System.cmd("sh", ["-c", cmd])` and `:os.cmd(charlist ++ user)` with user input interpolated into the shell command string. Phoenix/Elixir rule pack.
 - [ ] `phoenix_liveview_upload.ex` → input_validation (high), `cwe: ["CWE-434"]`, `owasp: ["A04:2021"]` — LiveView `allow_upload(:avatar, accept: :any)` with no `max_file_size:` cap; `consume_uploaded_entries` writes the upload to a publicly served path using the client-supplied filename. Phoenix/Elixir rule pack.
+- [ ] `rails_connection_execute.rb` → injection (critical), `cwe: ["CWE-89"]`, `owasp: ["A03:2021"]` — Rails controller passes `"SELECT ... WHERE status = '#{params[:status]}'"` to `ActiveRecord::Base.connection.execute` and `.exec_query` — direct interpolation, no bind parameters. Rails/Ruby rule pack.
+- [ ] `rails_missing_auth.rb` → authentication (high), `cwe: ["CWE-306"]`, `owasp: ["A07:2021"]` — Rails `PostsController` defines `create` / `update` / `destroy` actions without `before_action :authenticate_user!` and without `skip_before_action`. Rails/Ruby rule pack.
+- [ ] `rails_json_leak.rb` → data_exposure (high), `cwe: ["CWE-200"]`, `owasp: ["A04:2021"]` — Rails `UsersController` calls `render json: @user`, `render json: @users`, and `render json: current_user` on a `User` model with `password_digest`, `reset_password_token`, `api_token`, `two_factor_secret`, `encrypted_otp_secret` — no `only:` / `except:` / serializer. Rails/Ruby rule pack.
 
 ### Web defense-in-depth pack
 
