@@ -277,6 +277,12 @@ Default behavior (no `--fail-on` flag) preserves exit 0 always — byte-identica
 
 Stricter posture: `--fail-on high` blocks on any critical or high finding. `--fail-on medium` blocks on critical, high, OR medium. `info`-only findings never trip a threshold. Pair with `--baseline` to accept a known set of findings and gate only on new ones.
 
+### PR-against-base scope
+
+By default, diff mode scans `git diff HEAD` — i.e., the working tree against the last commit on the current branch. That's the right scope for a local pre-commit check, but the wrong scope for a CI gate, which should review every change the branch introduces relative to its merge target.
+
+The `--base <ref>` flag widens the diff to `<ref>...HEAD` (three-dot range). Three-dot scopes strictly to the changes the current branch introduced over the merge-base; two-dot would also include base-side commits since divergence, producing a noisier diff. On GitHub Actions, pass `--base origin/${{ github.base_ref }}`. On GitLab, pass the merge-request target. The shipped workflow does this automatically when `github.base_ref` is non-empty. The flag is a no-op under `--full` (full mode reads tracked files via `git ls-files`, which is ref-independent). Invalid refs produce exit 2 with a clear error; the command never silently falls back to `HEAD`.
+
 ## Running the eval locally
 
 The `scripts/run_eval.sh` runner dispatches the `security-reviewer` agent against every fixture in `test/fixtures/` and asserts the findings documented in `test/fixtures/EXPECTED.md`. It is the same suite CI runs (`.github/workflows/eval.yml`).

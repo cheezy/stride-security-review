@@ -56,7 +56,16 @@ jobs:
           # we ALSO post-check the JSON with jq so the gate is robust to claude -p
           # exit-code propagation differences across CLI versions.
           set +e
-          claude -p "/stride-security-review:security-review --json --fail-on ${FAIL_ON}" \
+          # Scope the diff to the PR's changes only (current branch relative to base).
+          # On non-PR triggers (workflow_dispatch on the default branch), github.base_ref
+          # is empty — fall back to the default diff-mode behavior (HEAD).
+          base_ref="${{ github.base_ref }}"
+          if [ -n "$base_ref" ]; then
+            base_flag=" --base origin/${base_ref}"
+          else
+            base_flag=""
+          fi
+          claude -p "/stride-security-review:security-review --json --fail-on ${FAIL_ON}${base_flag}" \
             > review.json 2> review.stderr
           claude_exit=$?
           set -e

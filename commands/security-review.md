@@ -1,7 +1,7 @@
 ---
 description: AI-powered security review of the current git diff (or specified paths). Dispatches the security-reviewer agent and prints findings grouped by severity.
 allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git ls-files:*), Bash(git rev-parse:*), Bash(grep:*), Bash(wc:*), Bash(exit:*), Read, Glob, Grep, Agent
-argument-hint: "[--full] [--json] [--fail-on <severity>] [path ...]"
+argument-hint: "[--full] [--json] [--fail-on <severity>] [--base <ref>] [path ...]"
 ---
 
 Run an AI-powered security review of code changes in this repository. Detects vulnerabilities across injection, authentication/authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, and insecure configuration. Filters out low-impact noise (denial-of-service, rate-limiting, memory-exhaustion).
@@ -21,6 +21,7 @@ The user invoked you with the arguments `$ARGUMENTS`. Treat them as a space-sepa
 - If `--baseline` appears, treat the NEXT token as the path to a baseline-suppression file and set `BASELINE_PATH` to that token. Otherwise auto-detect by looking for `.security-review-baseline.json` in the repo root — if present, set `BASELINE_PATH` to that path; if absent, set `BASELINE_PATH=""` (no suppression). A malformed baseline file produces a one-line warning (`Baseline file malformed — proceeding without suppression`) and `BASELINE_PATH=""`. Baseline file schema is `{"schema_version": 1, "generated_at": "<ISO8601>", "acknowledged": [{"fingerprint": "<hex>", "vulnerability_class": "...", "file": "...", "line": 42, "note": "human note"}]}`. Each entry's `fingerprint` is `SHA256(vulnerability_class + "|" + file + "|" + line + "|" + first_80_chars_of_description)`. See Step 4.6 below for the suppression merge.
 - If `--update-baseline` appears, set `UPDATE_BASELINE=true`. After Step 4.6 produces the final findings document, write a baseline file at `BASELINE_PATH` (or `.security-review-baseline.json` if unset) containing every finding from the current run, then print one line: `Baseline updated: <path> (N entries)`. If a baseline already exists at that path, prompt the user with one line: `Overwrite existing baseline at <path>? [y/N]` — abort without writing on anything other than `y`/`Y`.
 - If `--patches` appears, set `PATCHES_MODE=true` and inject a `Patches mode: enabled` directive into the agent's prompt in Step 4 (both modes). This instructs the agent to emit an optional `patch` field (unified-diff text the user could `git apply`) on each finding where a minimal, surgical fix exists. When `--patches` is absent (`PATCHES_MODE=false`), the agent MUST NOT emit a `patch` field — the JSON document stays byte-identical for callers that don't opt in. Patches are opt-in because they cost agent tokens. Surgical-fix only: when the correct fix requires understanding code outside the reviewed unit (refactor, architecture change, new dependency), the agent OMITS the `patch` field on that finding even with --patches set. The slash command does NOT auto-apply patches — they're review-and-apply suggestions, not auto-merge changes.
+- If `--base` appears, treat the NEXT token as a git ref name and set `BASE_REF` to it. Otherwise leave `BASE_REF` unset. When set, Step 2a uses the three-dot range `<ref>...HEAD` instead of `git diff HEAD`, scoping the review to changes the current branch introduced over the named base. Before use, validate the ref with one Bash invocation: `git rev-parse --verify <ref>^{commit}`. On non-zero exit, run a final `exit 2` via Bash with one stderr line `--base ref not found: <ref>` — do NOT proceed and do NOT silently fall back to `HEAD`. `--base` is ignored in `--full` mode (full mode uses `git ls-files`, which is ref-independent); print one stderr line `--base is a diff-mode flag and was ignored under --full` and continue. This flag is designed for PR-against-base CI gating: a GitHub Actions workflow passes `--base ${{ github.base_ref }}`, GitLab passes the merge-request target, etc.
 - If `--fail-on` appears, treat the NEXT token as a severity threshold and set `FAIL_ON_SEVERITY` to it. Valid values: `critical`, `high`, `medium`, `low`. If the next token is missing, is not one of those four values, or `--fail-on` appears at the end of the argument list, run a final `exit 2` via Bash with one stderr line `--fail-on requires one of: critical, high, medium, low` — do NOT proceed. If `--fail-on` is absent, leave `FAIL_ON_SEVERITY` unset; the command's exit code stays `0` regardless of findings, preserving byte-identical exit behavior for callers that do not opt in. See Step 6 below for the threshold evaluation. This flag is designed for CI gating: a PR workflow that wants to block merges on critical issues only sets `--fail-on critical`; a stricter posture uses `--fail-on high`.
 - Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro --rci 2 --baseline ci-baseline.json --patches --fail-on critical lib/` is valid.
 
@@ -34,23 +35,27 @@ The shape of the input depends on `FULL_MODE`. Each branch produces a payload yo
 
 You must produce a single unified diff text that the agent will analyze:
 
+When `BASE_REF` is set (from `--base <ref>` in Step 1), replace every `HEAD` below with the three-dot range `<BASE_REF>...HEAD`. Two-dot would include base-side commits since divergence and produce a noisier diff; three-dot scopes strictly to changes introduced on the current branch.
+
 - **No path arguments → all working-tree changes:**
 
   ```bash
-  git diff --no-color HEAD
+  git diff --no-color HEAD                       # default
+  git diff --no-color <BASE_REF>...HEAD           # when --base <ref> was set
   ```
 
-  This captures both staged and unstaged changes against the last commit. Do NOT use `git diff` alone (misses staged) or `git diff --cached` alone (misses unstaged). Do NOT compare against `origin/main` or any upstream — branch-aware comparison is intentionally out of scope for v1 because it requires knowing the upstream name, which varies across repos.
+  Default form captures both staged and unstaged changes against the last commit. Do NOT use `git diff` alone (misses staged) or `git diff --cached` alone (misses unstaged). The `--base` form widens the scope to every change on the current branch relative to the named base — the canonical CI shape (GitHub `${{ github.base_ref }}`, GitLab merge-request target, etc.). Prior versions explicitly avoided branch-aware comparison because it required knowing the upstream name; `--base` makes that name an explicit argument the caller supplies.
 
 - **Path arguments present:**
 
   ```bash
-  git diff --no-color HEAD -- <path1> <path2> ...
+  git diff --no-color HEAD -- <path1> <path2> ...                       # default
+  git diff --no-color <BASE_REF>...HEAD -- <path1> <path2> ...           # when --base <ref> was set
   ```
 
   Pass the user's paths verbatim after the `--` separator. Do NOT shell-glob them yourself; git handles the matching.
 
-- **Capture the list of changed files** with `git diff --name-only HEAD` (or with the path filter). You will pass this list to the agent alongside the diff. The diff-mode file count for Step 3 is the length of this list.
+- **Capture the list of changed files** with `git diff --name-only HEAD` (or with the path filter; or `git diff --name-only <BASE_REF>...HEAD` when `BASE_REF` is set). You will pass this list to the agent alongside the diff. The diff-mode file count for Step 3 is the length of this list.
 
 #### Step 2b: Full mode (`FULL_MODE=true`)
 
@@ -318,3 +323,5 @@ All examples below use the namespaced form `/stride-security-review:security-rev
 | `/stride-security-review:security-review --full --baseline ci-baseline.json` | Full scan with suppression file applied. |
 | `/stride-security-review:security-review --fail-on critical` | Diff mode; exit non-zero if any critical finding is present. CI gate. |
 | `/stride-security-review:security-review --full --json --fail-on high` | Full scan, JSON output, exit non-zero on any critical or high finding. |
+| `/stride-security-review:security-review --base main` | Review every change on the current branch relative to `main` (PR-against-base scope). |
+| `/stride-security-review:security-review --base origin/main --fail-on critical` | PR-against-base scope; exit non-zero on any critical finding. Canonical CI gate. |
