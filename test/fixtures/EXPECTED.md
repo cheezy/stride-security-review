@@ -1,6 +1,6 @@
 # Expected findings
 
-Smoke-test fixtures for the security-reviewer agent. Each fixture is a small piece of deliberately vulnerable code. Run `/security-review` (or dispatch the `security-reviewer` agent directly) against each fixture and confirm the listed finding is produced. False positives or missing findings indicate a prompt regression.
+Smoke-test fixtures for the security-reviewer agent. Each fixture is a small piece of deliberately vulnerable code. Run `/stride-security-review:security-review` (or dispatch the `security-reviewer` agent directly) against each fixture and confirm the listed finding is produced. False positives or missing findings indicate a prompt regression.
 
 ## Fixtures
 
@@ -44,15 +44,15 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 
 ## How to run the smoke test
 
-1. In a Claude Code session with the security-review plugin installed, `cd` into a clean clone of the security-review repo.
+1. In a Claude Code session with the `stride-security-review` plugin installed, `cd` into a clean clone of the `stride-security-review` repo.
 2. Stage the fixtures so they appear in `git diff HEAD`:
    ```bash
    touch test/fixtures/SMOKE_TEST_RUN.flag
    git add test/fixtures/SMOKE_TEST_RUN.flag
    ```
    (The flag file just gives `git diff` something to anchor against — the fixtures themselves are committed.)
-3. Run `/security-review test/fixtures/` and confirm each expected finding appears with the documented vulnerability class and severity.
-4. Run `/security-review --json test/fixtures/` and confirm the JSON output parses and matches the same set of findings.
+3. Run `/stride-security-review:security-review test/fixtures/` and confirm each expected finding appears with the documented vulnerability class and severity.
+4. Run `/stride-security-review:security-review --json test/fixtures/` and confirm the JSON output parses and matches the same set of findings.
 
 ## Full-scan scenario
 
@@ -61,7 +61,7 @@ Full-scan mode (`--full`, added in v1.1.0) reviews whole files rather than hunks
 ### Invocation
 
 ```bash
-/security-review --full test/fixtures/
+/stride-security-review:security-review --full test/fixtures/
 ```
 
 This scopes `git ls-files` to `test/fixtures/`, applies the binary and 256 KiB filters, and dispatches the `security-reviewer` agent in `full_file` mode.
@@ -112,6 +112,6 @@ A passing full-scan smoke test:
 - **Wrong or missing CWE/OWASP:** the agent reports the correct vulnerability_class but the `cwe` or `owasp` array doesn't match the expected per-fixture mapping. Inspect the agent prompt's "CWE and OWASP mapping requirements" subsection — was a CWE-ID dropped from the recognised list, or did a category mapping get inverted?
 - **Agentic class regression:** the agent flags a `prompt_injection` / `tool_abuse` / `agent_trust_boundary` / `model_output_execution` / `vector_store_poisoning` finding on a file that imports NO LLM/agent/MCP SDK (e.g. a plain Flask handler with no AI imports). The "Agentic vulnerability classes" section's import-signal gate has weakened. Conversely, if the agentic fixtures (e.g. `prompt_injection.py`) produce only the universal-class findings (`injection` instead of `prompt_injection`), the agentic-class enum or detection rubric has been dropped from the agent prompt.
 - **Cross-ecosystem coverage regression:** the agent detects a class only when the fixture is in one specific language (e.g. flags `prompt_injection.py` but misses `prompt_injection.ts`). The agentic rule is over-fit to a single ecosystem's SDK syntax — the per-language detection-signal list in the agent prompt has gone stale.
-- **MAESTRO mode regression:** `/security-review --maestro` against the agentic fixtures should populate `maestro_layer` on every finding (`data-operations` for prompt_injection and vector_store_poisoning, `agent-frameworks` for tool_abuse, `agent-ecosystem` for agent_trust_boundary, `agent-frameworks` or `data-operations` for model_output_execution). If `maestro_layer` is missing on findings when --maestro is set, the agent prompt's "MAESTRO 7-layer classification" subsection has been dropped or the dispatch directive isn't being passed. Conversely, if `maestro_layer` APPEARS on findings when --maestro is NOT set, the opt-in gate has weakened.
+- **MAESTRO mode regression:** `/stride-security-review:security-review --maestro` against the agentic fixtures should populate `maestro_layer` on every finding (`data-operations` for prompt_injection and vector_store_poisoning, `agent-frameworks` for tool_abuse, `agent-ecosystem` for agent_trust_boundary, `agent-frameworks` or `data-operations` for model_output_execution). If `maestro_layer` is missing on findings when --maestro is set, the agent prompt's "MAESTRO 7-layer classification" subsection has been dropped or the dispatch directive isn't being passed. Conversely, if `maestro_layer` APPEARS on findings when --maestro is NOT set, the opt-in gate has weakened.
 
 A passing smoke test is: all four checkboxes can be filled, no other findings appear, and the JSON output parses cleanly.

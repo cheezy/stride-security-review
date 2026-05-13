@@ -1,14 +1,29 @@
 # Changelog
 
-All notable changes to the `security-review` plugin are documented here.
+All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.0.0] - 2026-05-13
+
+### Changed
+
+- **BREAKING: Plugin renamed from `security-review` to `stride-security-review`.** The previous name collided with Claude Code's built-in `/security-review` command. v1.2.2 documented a workaround (always invoke via the old namespaced form), but the namespace itself still contained the colliding token, which caused autocomplete confusion and made the bare form silently fall through to the built-in. Renaming the plugin removes the collision at the namespace level: the canonical invocation is now `/stride-security-review:security-review`, and the bare `/security-review` cleanly belongs to the Claude Code built-in with no overlap.
+- **Marketplace entry renamed.** Users who installed via `stride-marketplace` should run `/plugin update stride-marketplace` after the marketplace v1.16.0 release; the manifest entry, source URL, and version all change in lockstep.
+- **GitHub repository renamed** from `cheezy/security-review` to `cheezy/stride-security-review`. GitHub serves a redirect from the old URL, but the canonical repository name and `homepage` / `repository` fields in `plugin.json` now reference the new path.
+- **All documentation, agent prompts, command files, skill prose, and test fixtures** have been updated to reference `/stride-security-review:security-review`. Inner artifact names (the `security-reviewer` agent, the `security-review-essentials` skill, the `commands/security-review.md` slash-command file) are intentionally unchanged — only the outer plugin namespace moved.
+
+### Migration
+
+- Replace any scripted invocations of the old namespaced form (the previous plugin name followed by `:security-review`) with `/stride-security-review:security-review`.
+- CI/CD jobs that shelled out via the bare `/security-review` form were already getting the Claude Code built-in (not this plugin); no action needed there beyond switching to the namespaced form if you wanted this plugin's behavior.
+- Re-installation: `/plugin uninstall security-review` then `/plugin install stride-security-review@stride-marketplace` (or `/plugin update stride-marketplace` if your marketplace cache picks up the manifest change).
 
 ## [1.2.2] - 2026-05-11
 
 ### Fixed
 
-- **`--full` (and every other flag) silently ignored when users invoked `/security-review` without the plugin namespace.** Claude Code ships with a built-in `/security-review` command that handles a diff-only review and does not understand any of this plugin's flags (`--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--update-baseline`, `--patches`). When both commands exist on a machine, the unqualified name resolves to the built-in, so users typing `/security-review --full` got a diff-only review with no error message. The plugin's command body already parses `--full` correctly when actually invoked; the symptom was a name-collision, not a parsing bug. This release documents the conflict and standardizes every example, README block, skill block, and changelog entry on the namespaced invocation form `/security-review:security-review`. The command body also gains an explicit "Honor every flag from Step 1" operational rule that forbids falling back to diff mode when `FULL_MODE=true`, and a "Name-collision warning" section pointing readers at the namespaced form. Files: `commands/security-review.md`, `agents/security-reviewer.md`, `README.md`, `skills/security-review-essentials/SKILL.md`.
+- **`--full` (and every other flag) silently ignored when users invoked `/security-review` without the plugin namespace.** Claude Code ships with a built-in `/security-review` command that handles a diff-only review and does not understand any of this plugin's flags (`--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--update-baseline`, `--patches`). When both commands exist on a machine, the unqualified name resolves to the built-in, so users typing `/security-review --full` got a diff-only review with no error message. The plugin's command body already parses `--full` correctly when actually invoked; the symptom was a name-collision, not a parsing bug. This release documents the conflict and standardizes every example, README block, skill block, and changelog entry on the namespaced invocation form `/stride-security-review:security-review` (originally documented under the old plugin name; updated alongside the v2.0.0 plugin rename). The command body also gains an explicit "Honor every flag from Step 1" operational rule that forbids falling back to diff mode when `FULL_MODE=true`, and a "Name-collision warning" section pointing readers at the namespaced form. Files: `commands/security-review.md`, `agents/security-reviewer.md`, `README.md`, `skills/security-review-essentials/SKILL.md`.
 
 ## [1.2.1] - 2026-05-11
 
@@ -100,6 +115,7 @@ Initial release.
 - **False-positive filter** — deliberate exclusions for DoS-only, rate-limiting, memory-exhaustion, and pure-style concerns.
 - **`security-review-essentials` skill** documenting the slash command's surface and customization knobs.
 
-[1.2.0]: https://github.com/cheezy/security-review/releases/tag/v1.2.0
-[1.1.0]: https://github.com/cheezy/security-review/releases/tag/v1.1.0
-[1.0.0]: https://github.com/cheezy/security-review/releases/tag/v1.0.0
+[2.0.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.0.0
+[1.2.0]: https://github.com/cheezy/stride-security-review/releases/tag/v1.2.0
+[1.1.0]: https://github.com/cheezy/stride-security-review/releases/tag/v1.1.0
+[1.0.0]: https://github.com/cheezy/stride-security-review/releases/tag/v1.0.0

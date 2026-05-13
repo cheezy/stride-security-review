@@ -39,18 +39,18 @@ The plugin supports two scan modes — pick the one that matches the question yo
 
 ### Invocations
 
-> **Use the namespaced form.** Claude Code has a built-in `/security-review` command that does NOT support this plugin's flags. Invoke this plugin as `/security-review:security-review` to bypass the built-in.
+> **Use the namespaced form.** Claude Code has a built-in `/security-review` command that does NOT support this plugin's flags. Invoke this plugin as `/stride-security-review:security-review`. (The plugin was renamed from `security-review` to `stride-security-review` in v2.0.0; the rename eliminates the namespace overlap with the built-in.)
 
 ```text
 # Diff mode (default)
-/security-review:security-review                 # all working-tree changes (staged + unstaged) vs HEAD
-/security-review:security-review path/to/file    # scope to specific paths
-/security-review:security-review --json          # raw JSON output (for piping into tools)
+/stride-security-review:security-review                 # all working-tree changes (staged + unstaged) vs HEAD
+/stride-security-review:security-review path/to/file    # scope to specific paths
+/stride-security-review:security-review --json          # raw JSON output (for piping into tools)
 
 # Full mode
-/security-review:security-review --full          # every tracked file in the repo
-/security-review:security-review --full lib/     # full scan scoped to a path
-/security-review:security-review --full --json   # full scan, raw JSON output
+/stride-security-review:security-review --full          # every tracked file in the repo
+/stride-security-review:security-review --full lib/     # full scan scoped to a path
+/stride-security-review:security-review --full --json   # full scan, raw JSON output
 ```
 
 `--full` and `--json` compose freely with each other and with path arguments.
@@ -100,7 +100,7 @@ Two customization knobs at v1.0:
 
 ## Composing with other workflows
 
-The `--json` flag makes the command pipeable. Other plugins (e.g., a Stride completion hook that wants to gate task completion on a clean review) can dispatch `/security-review:security-review --json`, parse the result, and decide whether to block. The agent does not call out to any external service, so this composition is safe for sensitive repos.
+The `--json` flag makes the command pipeable. Other plugins (e.g., a Stride completion hook that wants to gate task completion on a clean review) can dispatch `/stride-security-review:security-review --json`, parse the result, and decide whether to block. The agent does not call out to any external service, so this composition is safe for sensitive repos.
 
 ## What this skill does NOT cover
 

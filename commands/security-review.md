@@ -255,32 +255,32 @@ Do not invent any additional commentary, suggestions, or follow-up questions. Th
 - **Don't second-guess the agent's findings.** If the agent returns a finding you don't agree with, print it anyway. The user is the one who decides whether to act.
 - **Binary files** are skipped automatically by `git diff` for diff content; the changed-files list will include them but the agent will see only the header lines. In full mode, binaries are explicitly filtered by the `grep -Il` step in Step 2b. Security review on binary blobs is out of scope in both modes.
 
-## Name-collision warning
+## Invocation form
 
 Claude Code ships with a built-in `/security-review` command (a diff-only, single-prompt review). It does NOT understand any of this plugin's flags — `--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--patches` are silently ignored.
 
-When both commands exist on the user's machine, the unqualified `/security-review` resolves to the built-in, not this plugin. Users who want this plugin's behavior MUST invoke it with the explicit namespace:
+This plugin lives at the namespaced slash command `/stride-security-review:security-review`. The bare `/security-review` belongs to the Claude Code built-in. To exercise any of this plugin's flags, use the namespaced form:
 
 ```
-/security-review:security-review --full
+/stride-security-review:security-review --full
 ```
 
-The plugin's command name cannot transparently override the built-in from inside this file; the namespaced form is the supported entry point.
+The v2.0.0 plugin rename (from `security-review` to `stride-security-review`) eliminated the namespace-level overlap with the built-in. Earlier plugin versions documented the same workaround under the previous namespace; if you have scripted invocations of the old form, update them to the new namespace.
 
 ## Examples
 
-All examples below use the namespaced form `/security-review:security-review` to bypass the built-in Claude Code command of the same short name. See the "Name-collision warning" section above.
+All examples below use the namespaced form `/stride-security-review:security-review` so the plugin's flags reach the plugin's command body and not the Claude Code built-in.
 
 | Invocation | Effect |
 |---|---|
-| `/security-review:security-review` | Reviews all working-tree changes (staged + unstaged) against HEAD (diff mode). |
-| `/security-review:security-review lib/auth.ex` | Reviews changes to `lib/auth.ex` only (diff mode). |
-| `/security-review:security-review lib/ test/` | Reviews changes under `lib/` and `test/` (diff mode). |
-| `/security-review:security-review --json` | Diff mode, raw JSON output. |
-| `/security-review:security-review --json lib/auth.ex` | Path-scoped diff review, raw JSON output. |
-| `/security-review:security-review --full` | Full-codebase scan: every tracked text file under the size cap, batched in groups of 10. |
-| `/security-review:security-review --full lib/` | Full-codebase scan scoped to `lib/`: every tracked text file under `lib/`. |
-| `/security-review:security-review --full --json` | Full-codebase scan, raw JSON output. |
-| `/security-review:security-review --full --maestro` | Full scan with MAESTRO 7-layer classification per finding. |
-| `/security-review:security-review --full --rci 2` | Full scan followed by 2 recursive-criticism passes. |
-| `/security-review:security-review --full --baseline ci-baseline.json` | Full scan with suppression file applied. |
+| `/stride-security-review:security-review` | Reviews all working-tree changes (staged + unstaged) against HEAD (diff mode). |
+| `/stride-security-review:security-review lib/auth.ex` | Reviews changes to `lib/auth.ex` only (diff mode). |
+| `/stride-security-review:security-review lib/ test/` | Reviews changes under `lib/` and `test/` (diff mode). |
+| `/stride-security-review:security-review --json` | Diff mode, raw JSON output. |
+| `/stride-security-review:security-review --json lib/auth.ex` | Path-scoped diff review, raw JSON output. |
+| `/stride-security-review:security-review --full` | Full-codebase scan: every tracked text file under the size cap, batched in groups of 10. |
+| `/stride-security-review:security-review --full lib/` | Full-codebase scan scoped to `lib/`: every tracked text file under `lib/`. |
+| `/stride-security-review:security-review --full --json` | Full-codebase scan, raw JSON output. |
+| `/stride-security-review:security-review --full --maestro` | Full scan with MAESTRO 7-layer classification per finding. |
+| `/stride-security-review:security-review --full --rci 2` | Full scan followed by 2 recursive-criticism passes. |
+| `/stride-security-review:security-review --full --baseline ci-baseline.json` | Full scan with suppression file applied. |
