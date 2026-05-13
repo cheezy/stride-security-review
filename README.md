@@ -277,6 +277,28 @@ Default behavior (no `--fail-on` flag) preserves exit 0 always — byte-identica
 
 Stricter posture: `--fail-on high` blocks on any critical or high finding. `--fail-on medium` blocks on critical, high, OR medium. `info`-only findings never trip a threshold. Pair with `--baseline` to accept a known set of findings and gate only on new ones.
 
+### SARIF output
+
+`--sarif` emits a [SARIF v2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html) document on stdout — the de facto interchange format for security findings. Mutually exclusive with `--json`; both flags together produces exit 2.
+
+```bash
+# Upload findings to GitHub Code Scanning. The sarifs endpoint takes the
+# SARIF payload gzipped then base64-encoded; gh api -f cannot read that
+# directly from stdin, so capture into a variable first.
+ENCODED=$(claude -p "/stride-security-review:security-review --sarif --full" \
+  | gzip \
+  | base64 -w0)        # macOS base64 has no -w0; drop the flag there
+
+gh api -X POST "repos/${GITHUB_REPOSITORY}/code-scanning/sarifs" \
+  -f commit_sha="${GITHUB_SHA}" \
+  -f ref="refs/heads/${GITHUB_REF_NAME}" \
+  -f sarif="${ENCODED}"
+```
+
+Findings appear in the repository's **Security → Code Scanning** tab with severity badges, file:line links, and CWE/OWASP tags. Stable cross-run dedup uses the same fingerprint algorithm as `--baseline` (SHA-256 of `vulnerability_class|file|line|first-80-chars-of-description`, emitted under the `stride/v1` key in `partialFingerprints`).
+
+The full SARIF field mapping lives in [`schema/README.md`](schema/README.md); the schema itself is referenced from <https://json.schemastore.org/sarif-2.1.0.json>.
+
 ### PR-against-base scope
 
 By default, diff mode scans `git diff HEAD` — i.e., the working tree against the last commit on the current branch. That's the right scope for a local pre-commit check, but the wrong scope for a CI gate, which should review every change the branch introduces relative to its merge target.

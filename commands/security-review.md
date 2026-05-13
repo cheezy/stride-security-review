@@ -1,7 +1,7 @@
 ---
 description: AI-powered security review of the current git diff (or specified paths). Dispatches the security-reviewer agent and prints findings grouped by severity.
 allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git ls-files:*), Bash(git rev-parse:*), Bash(grep:*), Bash(wc:*), Bash(exit:*), Read, Glob, Grep, Agent
-argument-hint: "[--full] [--json] [--fail-on <severity>] [--base <ref>] [path ...]"
+argument-hint: "[--full] [--json | --sarif] [--fail-on <severity>] [--base <ref>] [path ...]"
 ---
 
 Run an AI-powered security review of code changes in this repository. Detects vulnerabilities across injection, authentication/authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, and insecure configuration. Filters out low-impact noise (denial-of-service, rate-limiting, memory-exhaustion).
@@ -16,6 +16,7 @@ The user invoked you with the arguments `$ARGUMENTS`. Treat them as a space-sepa
 
 - If `--full` appears anywhere in the list, set `FULL_MODE=true` and remove that token from the list. Otherwise `FULL_MODE=false`. This selects between the two scan modes documented in the plugin README: `diff` (default) reviews working-tree changes against `HEAD`; `full` reviews tracked files end-to-end.
 - If `--json` appears anywhere in the list, set `JSON_MODE=true` and remove that token from the list. Otherwise `JSON_MODE=false`.
+- If `--sarif` appears anywhere in the list, set `SARIF_MODE=true` and remove that token from the list. Otherwise `SARIF_MODE=false`. This activates SARIF v2.1.0 output (see Step 5). `--sarif` and `--json` are MUTUALLY EXCLUSIVE: their top-level JSON shapes are incompatible (one is the agent's native schema, the other is the SARIF document). If both flags are present, run a final `exit 2` via Bash with one stderr line `--sarif and --json are mutually exclusive` — do NOT proceed and do NOT pick one silently. When both flags are absent, output is the human-readable report.
 - If `--maestro` appears anywhere in the list, set `MAESTRO_MODE=true` and remove that token from the list. Otherwise `MAESTRO_MODE=false`. This activates MAESTRO 7-layer classification — each finding's JSON gains a `maestro_layer` field, and the human-readable output adds a "By MAESTRO layer" subsection grouping findings by architectural layer. When `MAESTRO_MODE=false`, the `maestro_layer` field MUST NOT appear in the JSON document (preserves byte-identical output for callers that don't opt in). See [Cloud Security Alliance's MAESTRO framework](https://cloudsecurityalliance.org/blog/2025/02/06/agentic-ai-threat-modeling-framework-maestro) for the seven-layer model.
 - If `--rci` appears, set `RCI_PASSES` to the value of the NEXT token if that token parses as an integer in `1..3` — otherwise default `RCI_PASSES=1`. If `--rci` is absent, `RCI_PASSES=0` (no recursive criticism, single dispatch as today). RCI = Recursive Criticism & Improvement: after the standard dispatch produces a findings document, run `RCI_PASSES` additional critique-and-refine dispatches that receive both the prior pass's JSON AND the original input, and asks the agent to drop false positives and surface anything that was missed. OpenSSF documents this technique as reducing security weaknesses by up to an order of magnitude. The cap of 3 bounds cost; `RCI_PASSES > 3` is silently clamped. Combining `--rci` with `--full` is supported but expensive — N=2 over a 41-batch full scan is 41+82 = 123 agent dispatches. See Step 4.5 below for the iteration loop.
 - If `--baseline` appears, treat the NEXT token as the path to a baseline-suppression file and set `BASELINE_PATH` to that token. Otherwise auto-detect by looking for `.security-review-baseline.json` in the repo root — if present, set `BASELINE_PATH` to that path; if absent, set `BASELINE_PATH=""` (no suppression). A malformed baseline file produces a one-line warning (`Baseline file malformed — proceeding without suppression`) and `BASELINE_PATH=""`. Baseline file schema is `{"schema_version": 1, "generated_at": "<ISO8601>", "acknowledged": [{"fingerprint": "<hex>", "vulnerability_class": "...", "file": "...", "line": 42, "note": "human note"}]}`. Each entry's `fingerprint` is `SHA256(vulnerability_class + "|" + file + "|" + line + "|" + first_80_chars_of_description)`. See Step 4.6 below for the suppression merge.
@@ -219,7 +220,9 @@ The fingerprint MUST be stable across runs: it must NOT incorporate severity, co
 
 **If `JSON_MODE=true`:** Print the raw JSON document to stdout. No header, no formatting, no trailing prose. Other tools may pipe the output, so emit only the JSON. This output is byte-for-byte identical in diff and full modes — the schema is the contract and is mode-independent. Stop.
 
-**If `JSON_MODE=false`:** Print a human-readable report. Only the one-line header and the zero-findings short-circuit differ between modes; every other element is shared.
+**If `SARIF_MODE=true`:** Convert the findings document to SARIF v2.1.0 and print the resulting JSON to stdout. No header, no prose, no commentary — emit only the SARIF document. See "SARIF v2.1.0 mapping" subsection below for the exact field-by-field transform. The SARIF output is mode-independent (same shape from diff and full modes) and is the form GitHub Code Scanning, GitLab Security Dashboards, Azure DevOps, and most IDE SARIF viewers ingest natively. Stop.
+
+**If both `JSON_MODE` and `SARIF_MODE` are false:** Print a human-readable report. Only the one-line header and the zero-findings short-circuit differ between modes; every other element is shared.
 
 1. A one-line header that reflects the scan mode:
    - In **diff mode** (`FULL_MODE=false`): `Security review — N findings across M files`. `M` is the changed-file count from Step 2a.
@@ -251,6 +254,97 @@ The fingerprint MUST be stable across runs: it must NOT incorporate severity, co
    - When `files_skipped` is empty, OMIT the entire `## Skipped` block — do not print an empty heading. In diff mode the key isn't emitted in the first place, so this block never renders.
 
 Do not invent any additional commentary, suggestions, or follow-up questions. The report is the deliverable.
+
+#### SARIF v2.1.0 mapping
+
+Active only when `SARIF_MODE=true`. The transform converts the agent's native findings JSON into a SARIF v2.1.0 document conforming to the OASIS schema at <https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json>. Emit a single JSON object with the shape below — no Markdown fence, no surrounding prose.
+
+**Top-level shape:**
+
+```json
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "stride-security-review",
+          "version": "2.1.0",
+          "informationUri": "https://github.com/cheezy/stride-security-review",
+          "rules": [ /* one entry per distinct vulnerability_class present in findings */ ]
+        }
+      },
+      "results": [ /* one entry per finding */ ]
+    }
+  ]
+}
+```
+
+SARIF requires at least one `runs[]` entry, so emit the single-run object even when there are zero findings; in that case `results` is an empty array.
+
+**Per-rule entry (deduplicated from findings):**
+
+For each distinct `vulnerability_class` across the findings list, emit one rule entry:
+
+```json
+{
+  "id": "<vulnerability_class>",
+  "name": "<vulnerability_class>",
+  "shortDescription": {"text": "<one-line human description>"},
+  "helpUri": "https://github.com/cheezy/stride-security-review#what-it-catches"
+}
+```
+
+**Per-result entry:**
+
+For each finding emit one `results[]` entry:
+
+```json
+{
+  "ruleId": "<vulnerability_class>",
+  "level": "<error | warning | note>",
+  "message": {"text": "<description>"},
+  "locations": [
+    {
+      "physicalLocation": {
+        "artifactLocation": {"uri": "<file>"},
+        "region": {"startLine": <line>}
+      }
+    }
+  ],
+  "properties": {
+    "tags": [/* every CWE-ID, every OWASP category, then "confidence:<value>" */],
+    "security-severity": "<numeric severity score>"
+  },
+  "fixes": [
+    {"description": {"text": "<remediation>"}}
+  ],
+  "partialFingerprints": {
+    "stride/v1": "<SHA256 hex of vulnerability_class|file|line|first_80_chars_of_description>"
+  }
+}
+```
+
+**Severity → level mapping:**
+
+| Finding severity | SARIF `level` | `security-severity` |
+|---|---|---|
+| `critical` | `error` | `9.0` |
+| `high` | `error` | `7.0` |
+| `medium` | `warning` | `5.0` |
+| `low` | `note` | `3.0` |
+| `info` | `note` | `1.0` |
+
+The numeric `security-severity` is the convention GitHub Code Scanning uses to render severity badges; `level` is the SARIF-native field. Both are emitted so consumers that read either field render consistently.
+
+**Tags array:** concatenate the finding's `cwe` array, then its `owasp` array, then a final string `confidence:<value>` (e.g. `confidence:high`). When `MAESTRO_MODE=true` AND the finding's `maestro_layer` is populated, append `maestro:<layer-id>` as a fourth element. Omit empty CWE/OWASP entries silently — never emit `null` inside the tags array.
+
+**Fixes array:** always emit one entry whose `description.text` is the agent's `remediation` field. When `PATCHES_MODE=true` AND the finding's `patch` field is non-empty, additionally emit `artifactChanges[0].replacements[0]` describing the patch (the surgical-fix text); when patches are absent the `fixes[0]` entry carries only the description.
+
+**partialFingerprints:** reuse the same fingerprint computation Step 4.6 uses for baseline matching — lowercase hex SHA-256 of the four-part string `vulnerability_class + "|" + file + "|" + line + "|" + first_80_chars_of_description`. Emit under the `stride/v1` key so future versions can introduce additional fingerprint algorithms without breaking dedup on prior runs.
+
+**Mode-independence:** the SARIF document MUST be byte-shape-identical between diff and full modes. `files_reviewed`, `files_skipped`, and `findings_by_severity` from the agent's `summary` block do NOT round-trip into SARIF — SARIF carries no per-run summary aside from the `results` length. Consumers that need those counters can read the JSON via `--json` on a separate invocation.
 
 ### Step 6: Threshold gating (when `FAIL_ON_SEVERITY` is set)
 
@@ -325,3 +419,5 @@ All examples below use the namespaced form `/stride-security-review:security-rev
 | `/stride-security-review:security-review --full --json --fail-on high` | Full scan, JSON output, exit non-zero on any critical or high finding. |
 | `/stride-security-review:security-review --base main` | Review every change on the current branch relative to `main` (PR-against-base scope). |
 | `/stride-security-review:security-review --base origin/main --fail-on critical` | PR-against-base scope; exit non-zero on any critical finding. Canonical CI gate. |
+| `/stride-security-review:security-review --sarif` | Diff mode; emit a SARIF v2.1.0 document on stdout. Pipe into GitHub Code Scanning or a SARIF viewer. |
+| `/stride-security-review:security-review --full --sarif --fail-on critical` | Full scan; SARIF output; CI gate on critical findings. |
