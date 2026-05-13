@@ -239,6 +239,44 @@ The `--json` flag makes `/stride-security-review:security-review` pipeable. Exam
 
 The agent does not call any external service, so composition is safe in repos with sensitive content.
 
+## CI Integration
+
+The plugin ships a reference workflow at [`.github/workflows/security-review.yml`](.github/workflows/security-review.yml). Drop it into your own repo's `.github/workflows/`, set an `ANTHROPIC_API_KEY` secret, and the slash command will run on every pull request — blocking the merge when a finding meets the configured severity threshold.
+
+### Exit-code contract
+
+When the slash command is invoked with `--fail-on <severity>`, it exits non-zero if any finding at or above the threshold is present. Severities order as `critical > high > medium > low > info`.
+
+| Exit | Meaning |
+|---|---|
+| `0` | No findings at/above `<severity>` (or `--fail-on` not set) |
+| `1` | At least one finding at/above `<severity>` |
+| `2` | Setup or usage error (invalid `--fail-on` value, missing `ANTHROPIC_API_KEY`, agent dispatch failure) |
+
+Default behavior (no `--fail-on` flag) preserves exit 0 always — byte-identical exit behavior for callers that do not opt in.
+
+### Robust gating
+
+`claude -p` exit-code propagation has varied across Claude Code CLI versions. The shipped workflow uses a belt-and-suspenders pattern: it runs the slash command with `--json --fail-on <severity>` AND post-checks the JSON output with `jq`. The gate fails if EITHER the slash command exited non-zero OR jq counts at least one finding at/above the threshold. Either signal is sufficient to block the merge.
+
+```yaml
+# Snippet from .github/workflows/security-review.yml (full file in this repo)
+- name: Run security review
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  run: |
+    set +e
+    claude -p "/stride-security-review:security-review --json --fail-on critical" > review.json
+    claude_exit=$?
+    set -e
+    gate_count=$(jq -r '[.findings[]? | select(.severity == "critical")] | length' review.json)
+    if [ "$gate_count" -gt 0 ] || [ "$claude_exit" -eq 1 ]; then exit 1; fi
+```
+
+### Tightening the threshold
+
+Stricter posture: `--fail-on high` blocks on any critical or high finding. `--fail-on medium` blocks on critical, high, OR medium. `info`-only findings never trip a threshold. Pair with `--baseline` to accept a known set of findings and gate only on new ones.
+
 ## Running the eval locally
 
 The `scripts/run_eval.sh` runner dispatches the `security-reviewer` agent against every fixture in `test/fixtures/` and asserts the findings documented in `test/fixtures/EXPECTED.md`. It is the same suite CI runs (`.github/workflows/eval.yml`).

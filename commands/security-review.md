@@ -1,7 +1,7 @@
 ---
 description: AI-powered security review of the current git diff (or specified paths). Dispatches the security-reviewer agent and prints findings grouped by severity.
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git ls-files:*), Bash(git rev-parse:*), Bash(grep:*), Bash(wc:*), Read, Glob, Grep, Agent
-argument-hint: "[--full] [--json] [path ...]"
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git ls-files:*), Bash(git rev-parse:*), Bash(grep:*), Bash(wc:*), Bash(exit:*), Read, Glob, Grep, Agent
+argument-hint: "[--full] [--json] [--fail-on <severity>] [path ...]"
 ---
 
 Run an AI-powered security review of code changes in this repository. Detects vulnerabilities across injection, authentication/authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, and insecure configuration. Filters out low-impact noise (denial-of-service, rate-limiting, memory-exhaustion).
@@ -21,7 +21,8 @@ The user invoked you with the arguments `$ARGUMENTS`. Treat them as a space-sepa
 - If `--baseline` appears, treat the NEXT token as the path to a baseline-suppression file and set `BASELINE_PATH` to that token. Otherwise auto-detect by looking for `.security-review-baseline.json` in the repo root — if present, set `BASELINE_PATH` to that path; if absent, set `BASELINE_PATH=""` (no suppression). A malformed baseline file produces a one-line warning (`Baseline file malformed — proceeding without suppression`) and `BASELINE_PATH=""`. Baseline file schema is `{"schema_version": 1, "generated_at": "<ISO8601>", "acknowledged": [{"fingerprint": "<hex>", "vulnerability_class": "...", "file": "...", "line": 42, "note": "human note"}]}`. Each entry's `fingerprint` is `SHA256(vulnerability_class + "|" + file + "|" + line + "|" + first_80_chars_of_description)`. See Step 4.6 below for the suppression merge.
 - If `--update-baseline` appears, set `UPDATE_BASELINE=true`. After Step 4.6 produces the final findings document, write a baseline file at `BASELINE_PATH` (or `.security-review-baseline.json` if unset) containing every finding from the current run, then print one line: `Baseline updated: <path> (N entries)`. If a baseline already exists at that path, prompt the user with one line: `Overwrite existing baseline at <path>? [y/N]` — abort without writing on anything other than `y`/`Y`.
 - If `--patches` appears, set `PATCHES_MODE=true` and inject a `Patches mode: enabled` directive into the agent's prompt in Step 4 (both modes). This instructs the agent to emit an optional `patch` field (unified-diff text the user could `git apply`) on each finding where a minimal, surgical fix exists. When `--patches` is absent (`PATCHES_MODE=false`), the agent MUST NOT emit a `patch` field — the JSON document stays byte-identical for callers that don't opt in. Patches are opt-in because they cost agent tokens. Surgical-fix only: when the correct fix requires understanding code outside the reviewed unit (refactor, architecture change, new dependency), the agent OMITS the `patch` field on that finding even with --patches set. The slash command does NOT auto-apply patches — they're review-and-apply suggestions, not auto-merge changes.
-- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro --rci 2 --baseline ci-baseline.json --patches lib/` is valid.
+- If `--fail-on` appears, treat the NEXT token as a severity threshold and set `FAIL_ON_SEVERITY` to it. Valid values: `critical`, `high`, `medium`, `low`. If the next token is missing, is not one of those four values, or `--fail-on` appears at the end of the argument list, run a final `exit 2` via Bash with one stderr line `--fail-on requires one of: critical, high, medium, low` — do NOT proceed. If `--fail-on` is absent, leave `FAIL_ON_SEVERITY` unset; the command's exit code stays `0` regardless of findings, preserving byte-identical exit behavior for callers that do not opt in. See Step 6 below for the threshold evaluation. This flag is designed for CI gating: a PR workflow that wants to block merges on critical issues only sets `--fail-on critical`; a stricter posture uses `--fail-on high`.
+- Whatever remains is a list of file or directory paths to scope the review to. The flags compose freely with each other and with path arguments — `--full --json --maestro --rci 2 --baseline ci-baseline.json --patches --fail-on critical lib/` is valid.
 
 When `FULL_MODE=false`, an empty path list means "all changed files in the working tree." When `FULL_MODE=true`, an empty path list means "every tracked file in the repo."
 
@@ -246,6 +247,37 @@ The fingerprint MUST be stable across runs: it must NOT incorporate severity, co
 
 Do not invent any additional commentary, suggestions, or follow-up questions. The report is the deliverable.
 
+### Step 6: Threshold gating (when `FAIL_ON_SEVERITY` is set)
+
+This step runs ONLY when `--fail-on <severity>` was passed in Step 1. When unset, skip the step entirely — the command produces no Bash exit beyond Step 5's rendering and the caller observes the same exit code as before this flag existed.
+
+When `FAIL_ON_SEVERITY` is set, evaluate the threshold against the FINAL post-Step 4.6 findings list (after RCI passes and baseline suppression have both run). The severity order is `critical > high > medium > low > info`. A finding "meets the threshold" when its `.severity` is greater than or equal to `FAIL_ON_SEVERITY`. So:
+
+- `--fail-on critical` → fails on findings whose severity is `critical`.
+- `--fail-on high`     → fails on findings whose severity is `critical` or `high`.
+- `--fail-on medium`   → fails on findings whose severity is `critical`, `high`, or `medium`.
+- `--fail-on low`      → fails on findings whose severity is `critical`, `high`, `medium`, or `low`.
+
+`info`-only findings never trip a threshold (`--fail-on info` is not a valid value).
+
+Procedure:
+
+1. Count findings at or above `FAIL_ON_SEVERITY`. Call this `N_GATE`.
+2. If `N_GATE == 0`, the command's work is done — no further action. Exit code stays at `0` (the default).
+3. If `N_GATE >= 1`, run one Bash invocation: `exit 1`. The slash command's residual exit code is now `1`. The rendered report from Step 5 has already been printed to stdout, so the caller sees BOTH the human-readable report AND the non-zero exit signal.
+
+Do NOT print an additional "Gated: N findings at/above <severity>" line — the per-severity counts on Step 5's `Critical: ... High: ... Medium: ...` line already communicate the count. Adding another line would diverge the human-readable output between `--fail-on`-set and `--fail-on`-unset callers.
+
+**Exit code contract:**
+
+| Exit | Meaning |
+|---|---|
+| `0` | No findings at/above `FAIL_ON_SEVERITY` (or `--fail-on` not set) |
+| `1` | At least one finding at/above `FAIL_ON_SEVERITY` |
+| `2` | Setup / usage error (invalid `--fail-on` value, bad input, agent dispatch failure) |
+
+**CI note:** the exit code propagation through `claude -p` depends on the Claude Code CLI version. CI workflows that need a robust gate should ALSO emit `--json` and post-check the JSON with `jq` — see the README's "CI Integration" section for a belt-and-suspenders example.
+
 ## Operational rules
 
 - **Honor every flag from Step 1.** `--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--update-baseline`, and `--patches` are all first-class options. If Step 1 sets `FULL_MODE=true`, you MUST execute Step 2b and Step 4b — do NOT fall back to diff mode under any circumstance, and do NOT invent a "this looks small, I'll just diff it" shortcut. The user opted in by passing the flag; honor it.
@@ -284,3 +316,5 @@ All examples below use the namespaced form `/stride-security-review:security-rev
 | `/stride-security-review:security-review --full --maestro` | Full scan with MAESTRO 7-layer classification per finding. |
 | `/stride-security-review:security-review --full --rci 2` | Full scan followed by 2 recursive-criticism passes. |
 | `/stride-security-review:security-review --full --baseline ci-baseline.json` | Full scan with suppression file applied. |
+| `/stride-security-review:security-review --fail-on critical` | Diff mode; exit non-zero if any critical finding is present. CI gate. |
+| `/stride-security-review:security-review --full --json --fail-on high` | Full scan, JSON output, exit non-zero on any critical or high finding. |
