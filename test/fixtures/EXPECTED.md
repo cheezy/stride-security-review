@@ -38,6 +38,8 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `django_open_redirect.py` → input_validation (high), `cwe: ["CWE-601"]`, `owasp: ["A01:2021"]` — Django view passes `request.GET.get('next')` directly to `HttpResponseRedirect` and `request.POST['return_to']` to `redirect()` with no `url_has_allowed_host_and_scheme` check. Django/Python rule pack.
 - [ ] `phoenix_open_redirect.ex` → input_validation (high), `cwe: ["CWE-601"]`, `owasp: ["A01:2021"]` — Phoenix controller uses `redirect(conn, external: params['return_to'])` and `redirect(conn, external: params['continue_url'])` — the `external:` key bypasses same-origin. Phoenix/Elixir rule pack.
 - [ ] `rails_open_redirect.rb` → input_validation (high), `cwe: ["CWE-601"]`, `owasp: ["A01:2021"]` — Rails controller calls `redirect_to params[:next], allow_other_host: true` and `redirect_to params[:url], allow_other_host: true` — the explicit override defeats Rails 7+ default same-host gating. Rails/Ruby rule pack.
+- [ ] `django_deserialization.py` → xss_or_code_exec (critical), `cwe: ["CWE-502"]`, `owasp: ["A08:2021"]` — Django views consume `pickle.loads(base64.b64decode(request.POST['state']))`, `yaml.load(request.body)` without `SafeLoader`, and `signing.loads(request.GET['t'])` without `max_age`. Django/Python rule pack.
+- [ ] `rails_deserialization.rb` → xss_or_code_exec (critical), `cwe: ["CWE-502"]`, `owasp: ["A08:2021"]` — Rails controller consumes `Marshal.load(Base64.decode64(params[:snapshot]))`, `YAML.load(request.body.read)` without `permitted_classes:`, and `YAML.unsafe_load(params[:yaml])`. Rails/Ruby rule pack.
 
 ### Web defense-in-depth pack
 
