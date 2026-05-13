@@ -70,6 +70,12 @@ parse_expected_md() {
       match(line, /`[^`]+`/)
       path = substr(line, RSTART+1, RLENGTH-2)
       rest = substr(line, RSTART+RLENGTH)
+      # negative-control marker: " → NONE" before any optional prose. Treat as count=0
+      # with class/severity placeholders the comparator interprets as "no findings expected".
+      if (rest ~ /^ +→ +NONE( |$)/ || rest ~ /^ +→ +NONE +—/) {
+        printf "%s\t%s\t%s\t%s\t%s\t%d\n", path, "__NONE__", "__NONE__", "", "", 0
+        next
+      }
       # class + severity: after → token, before first comma
       n = match(rest, /→ +[a-z_]+ +\([a-z]+\)/)
       if (n == 0) next
@@ -206,6 +212,47 @@ compare_finding() {
   # "sql_injection.py" depending on prompt handling.
   local base
   base="$(basename "$rel")"
+
+  # Negative-control case (EXPECTED.md row → NONE; cls="__NONE__", count=0):
+  # the fixture must produce ZERO findings of any class on this file.
+  if [ "$cls" = "__NONE__" ]; then
+    local any_count
+    any_count=$(jq --arg rel "$rel" --arg base "$base" '
+      [ .findings // []
+        | .[]
+        | select(
+            .file == $rel
+            or .file == $base
+            or (.file | endswith("/" + $rel))
+            or (.file | endswith("/" + $base))
+          )
+      ] | length
+    ' "$json")
+    if [ "$any_count" -gt 0 ]; then
+      local actual
+      actual=$(jq --arg rel "$rel" --arg base "$base" '
+        [ .findings // []
+          | .[]
+          | select(
+              .file == $rel
+              or .file == $base
+              or (.file | endswith("/" + $rel))
+              or (.file | endswith("/" + $base))
+            )
+          | "\(.vulnerability_class)/\(.severity)"
+        ] | join(", ")
+      ' "$json")
+      actual=${actual//\"/}
+      cat >&2 <<EOF
+  --- expected
+  +++ actual ($json)
+  - (none) — negative control
+  + $actual
+EOF
+      return 1
+    fi
+    return 0
+  fi
 
   local match_count
   match_count=$(jq --arg rel "$rel" --arg base "$base" --arg cls "$cls" --arg sev "$sev" '
@@ -355,8 +402,13 @@ main() {
     IFS=$'\t' read -r path cls sev cwe owasp count <<<"$rec"
     local stem
     stem="$(sanitize_path "$path")"
-    local detail="$cls/$sev"
-    [ "$count" -gt 1 ] && detail="$detail x$count"
+    local detail
+    if [ "$cls" = "__NONE__" ]; then
+      detail="negative control"
+    else
+      detail="$cls/$sev"
+      [ "$count" -gt 1 ] && detail="$detail x$count"
+    fi
 
     local json
     if ! json="$(invoke_agent "$path" "$stem")"; then

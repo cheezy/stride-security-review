@@ -40,6 +40,14 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `django_missing_headers.py` → insecure_config (high), `cwe: ["CWE-614"]`, `owasp: ["A05:2021"]` — Django production settings with MIDDLEWARE list omitting SecurityMiddleware, `SESSION_COOKIE_SECURE = False`, `SESSION_COOKIE_HTTPONLY = False`, no `SECURE_HSTS_SECONDS`, no CSP. Asserts the cookie-flags finding at severity high; CSP/HSTS/X-Frame-Options at medium are bonus findings expected on the same file but not gated here.
 - [ ] `phoenix_missing_headers.ex` → insecure_config (high), `cwe: ["CWE-614"]`, `owasp: ["A05:2021"]` — Phoenix Endpoint with no `force_ssl`, no `put_secure_browser_headers/2`, and `Plug.Session` opts of `secure: false, http_only: false`. Asserts the cookie-flags finding at severity high; CSP / HSTS / X-Frame-Options at medium are bonus findings expected on the same file but not gated here.
 
+### Negative controls
+
+These fixtures are look-alike-but-safe versions of patterns that should fire elsewhere in the suite. The eval runner asserts ZERO findings on each (any finding produced fails the run). Catching over-firing is the regression these guard against.
+
+- [ ] `phoenix_changeset_safe.ex` → NONE — `cast/3` with explicit `[:email, :name]` allow-list excluding `:role` and `:is_admin`. The Phoenix mass-assignment rule must NOT fire here.
+- [ ] `phoenix_fragment_safe.ex` → NONE — `fragment("? = ?", field, ^user_input)` positional-binding form with the `^` pin. The Phoenix Ecto fragment-injection rule must NOT fire here.
+- [ ] `rails_html_safe_constant.rb` → NONE — `.html_safe` applied to string literals and an allow-list-keyed lookup table. The Rails `html_safe` XSS rule must NOT fire here.
+
 ### CI/CD pipeline rule pack
 
 - [ ] `ci_cd/github_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — two unpinned action references (`@v4`, `@main`); third step pinned to a 40-hex SHA must NOT trigger (negative case). GitHub Actions ecosystem.
