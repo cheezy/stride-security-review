@@ -4,6 +4,12 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-05-13
+
+### Added
+
+- **Express / Node.js framework rule pack.** New pack at `agents/security-reviewer.md` between the Django and Phoenix packs (alphabetical). Activation: `.js` / `.mjs` / `.cjs` / `.ts` extensions AND import of `express` / `koa` / `fastify` / `@hapi/hapi` / `restify`. Five rules: (1) reflected XSS via `res.send(req.query.x)` (CWE-79); (2) RCE via `eval` / `Function()` / `vm.runInNewContext` with `req.*` content (CWE-95); (3) OS command injection via `child_process.exec` / `execSync` with shell wrapper (CWE-78); (4) Mongoose NoSQL injection via `Model.find(req.body)` operator-injection (CWE-943); (5) prototype pollution via `_.merge` / `_.set` with attacker-controlled keys (CWE-1321). Each rule has explicit non-trigger guidance (sanitized output, allow-list-validated input, `execFile`/`spawn` argv form, Joi/Zod/ajv-validated objects, top-level non-recursive `Object.assign`). Comes with `express_xss_reflected.js`, `express_command_injection.js`, `express_eval.js`, `express_mongoose_injection.js`, `express_prototype_pollution.js`. Prior art: eslint-plugin-security, Semgrep `p/nodejs`, Snyk Code — all pattern-based; the semantic-analysis differentiator is taint tracking through validator middleware before the sink. README "What it catches" updated.
+
 ## [2.2.0] - 2026-05-13
 
 ### Added
