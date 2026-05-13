@@ -4,6 +4,15 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-13
+
+### Added
+
+- **Eval runner (`scripts/run_eval.sh`).** POSIX bash + `jq` runner that dispatches the `security-reviewer` agent via `claude -p` against every fixture in `test/fixtures/` and asserts the expected `vulnerability_class` + `severity` from `test/fixtures/EXPECTED.md`. Output is [TAP 13](https://testanything.org/tap-version-13-specification.html); exit `0` only if every fixture produces its expected finding at the expected count (the Bitbucket multi-finding fixture requires both). Failing fixtures emit a diff-style expected-vs-actual block. CWE/OWASP mismatches are advisory (warn, no fail). Raw agent JSON for each fixture is written to `logs/` (gitignored). Flags: `--fixture <path>` (run one), `--dry-run` (no API call), `--verbose` (echo prompts + JSON to stderr), `--fixtures-dir <path>` (override location).
+- **GitHub Actions workflow (`.github/workflows/eval.yml`).** Runs the eval on push to `main` and on PRs that touch `agents/`, `commands/`, `skills/`, `test/fixtures/`, the runner itself, or the workflow. Uploads `logs/` as a build artifact on failure. All third-party actions are pinned to 40-hex commit SHAs, in line with the plugin's own supply-chain rule.
+- **README "Running the eval locally" section** documenting prerequisites, invocation, flags, and the assertion tolerance model.
+- **`.gitignore` entry for `logs/`** so eval output stays untracked.
+
 ## [2.0.0] - 2026-05-13
 
 ### Changed

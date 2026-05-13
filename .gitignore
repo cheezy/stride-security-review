@@ -10,3 +10,6 @@
 
 # Claude Code user-local settings
 .claude/
+
+# Eval runner output (scripts/run_eval.sh)
+logs/

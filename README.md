@@ -239,6 +239,36 @@ The `--json` flag makes `/stride-security-review:security-review` pipeable. Exam
 
 The agent does not call any external service, so composition is safe in repos with sensitive content.
 
+## Running the eval locally
+
+The `scripts/run_eval.sh` runner dispatches the `security-reviewer` agent against every fixture in `test/fixtures/` and asserts the findings documented in `test/fixtures/EXPECTED.md`. It is the same suite CI runs (`.github/workflows/eval.yml`).
+
+### Prerequisites
+
+- `jq` on `$PATH`
+- The Claude Code CLI (`claude`) on `$PATH` — set `CLAUDE_CLI` if your binary lives elsewhere
+- `ANTHROPIC_API_KEY` exported (unless using `--dry-run`)
+
+### Run
+
+```bash
+bash scripts/run_eval.sh                                  # all 23 expectations
+bash scripts/run_eval.sh --fixture test/fixtures/sql_injection.py
+bash scripts/run_eval.sh --dry-run                        # parser/comparator only; no API calls
+bash scripts/run_eval.sh --verbose                        # echo prompts and raw agent JSON to stderr
+```
+
+Output is [TAP 13](https://testanything.org/tap-version-13-specification.html): one `ok N` / `not ok N` line per fixture, followed by a trailing pass/fail summary. Exit code `0` means every expected `vulnerability_class` + `severity` was produced at least once on the expected file (the Bitbucket multi-finding fixture requires both expected findings).
+
+Per fixture, two files land in `logs/` (gitignored):
+
+- `logs/<sanitized-path>.json` — the parsed JSON document the agent emitted, with any wrapping prose stripped.
+- `logs/<sanitized-path>.raw.txt` — the full unmodified stdout from `claude -p`, useful when the parser can't fence-extract or when you want to see what surrounded the JSON.
+
+### Tolerance
+
+The runner asserts `(file, vulnerability_class, severity, count)`. CWE and OWASP mismatches surface as `# warn:` TAP comments but do not fail the run — they are advisory metadata, not the contract. EXPECTED.md is the spec; do not modify it to match the agent.
+
 ## Contributing
 
 Issues and PRs welcome at <https://github.com/cheezy/stride-security-review>. For prompt or filter changes, please include a smoke-test diff and the expected finding in your PR description so reviewers can verify the change does what you say.
