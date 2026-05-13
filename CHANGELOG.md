@@ -4,6 +4,12 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-13
+
+### Changed
+
+- **Standardized "what to look for" prose across the Django, Phoenix, and Rails framework packs.** Every rule row now follows the 2-3 sentence template established by the v2.1.0 Phoenix mass-assignment rule: (1) positive pattern with concrete trust-boundary indicators, (2) discriminating signal or analog rule across packs, (3) explicit `Do NOT flag <X>` non-trigger clause where realistic look-alikes exist. Mapping columns and rule-name columns are unchanged. The longer form measurably reduces false positives on look-alike-but-safe code (literal-string `mark_safe`, parameterized `raw()`, JSON-API `@csrf_exempt`, dev-only `DEBUG = True`, allow-listed Strong Parameters, positional `fragment("? = ?")`, scoped `Repo.get`, constant-symbol `obj.send`).
+
 ## [2.1.0] - 2026-05-13
 
 ### Added
