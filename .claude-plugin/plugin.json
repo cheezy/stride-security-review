@@ -1,7 +1,7 @@
 {
   "name": "stride-security-review",
-  "description": "AI-powered security review for code changes via the /stride-security-review:security-review slash command. Two scan modes (diff / --full), multi-ecosystem framework rule packs, multi-platform CI/CD rule pack, MAESTRO 7-layer agentic-AI classification, RCI critique loop, baseline suppression, and surgical-fix patches. Loosely based on anthropics/claude-code-security-review.",
-  "version": "2.0.0",
+  "description": "AI-powered security review for code changes via the /stride-security-review:security-review slash command. Two scan modes (diff / --full), multi-ecosystem framework rule packs (now including a Phoenix mass-assignment rule), multi-platform CI/CD rule pack, MAESTRO 7-layer agentic-AI classification, RCI critique loop, baseline suppression, surgical-fix patches, SARIF v2.1.0 output for GitHub Code Scanning, --fail-on severity gating for CI, and --base <ref> for PR-against-base diffs. Ships a reference GitHub Actions workflow and a TAP 13 eval runner over 24 fixtures. Loosely based on anthropics/claude-code-security-review.",
+  "version": "2.1.0",
   "author": {
     "name": "Jeff Morgan",
     "email": "cheezy@letstango.ca"
