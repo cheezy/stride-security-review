@@ -43,6 +43,9 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `django_ssrf.py` → input_validation (high), `cwe: ["CWE-918"]`, `owasp: ["A10:2021"]` — Django views consume `requests.get(request.GET['url'])`, `urllib.request.urlopen(request.POST['import_url'])`, and `httpx.AsyncClient().get(request.GET['target'])` with no host allow-list. Realistic worst case: AWS IMDS exfiltration via `169.254.169.254`. Django/Python rule pack.
 - [ ] `django_drf_mass_assignment.py` → authorization (high), `cwe: ["CWE-915"]`, `owasp: ["A04:2021"]` — DRF `UserSerializer` uses `fields = '__all__'` on a `User` model that includes `:is_staff`, `:is_superuser`, `:role`, and `:owner_id`. Django/Python rule pack — DRF analog of Rails `params.permit!`.
 - [ ] `django_insecure_settings.py` → insecure_config (high), `cwe: ["CWE-1004"]`, `owasp: ["A05:2021"]` — production-bound Django settings with `DEBUG = True`, `ALLOWED_HOSTS = ['*']`, `SECURE_SSL_REDIRECT = False`, `SESSION_COOKIE_SECURE = False`, `CSRF_COOKIE_SECURE = False`, and no `SECURE_HSTS_SECONDS`. Django/Python rule pack.
+- [ ] `phoenix_token_no_max_age.ex` → authentication (high), `cwe: ["CWE-613"]`, `owasp: ["A07:2021"]` — password-reset controller verifies a `Phoenix.Token` once with no `max_age` opt and once with `max_age: :infinity`. Phoenix/Elixir rule pack.
+- [ ] `phoenix_system_cmd_shell.ex` → injection (critical), `cwe: ["CWE-78"]`, `owasp: ["A03:2021"]` — LiveView event handlers run `System.cmd("sh", ["-c", cmd])` and `:os.cmd(charlist ++ user)` with user input interpolated into the shell command string. Phoenix/Elixir rule pack.
+- [ ] `phoenix_liveview_upload.ex` → input_validation (high), `cwe: ["CWE-434"]`, `owasp: ["A04:2021"]` — LiveView `allow_upload(:avatar, accept: :any)` with no `max_file_size:` cap; `consume_uploaded_entries` writes the upload to a publicly served path using the client-supplied filename. Phoenix/Elixir rule pack.
 
 ### Web defense-in-depth pack
 
