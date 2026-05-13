@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **GitHub Actions workflow (`.github/workflows/eval.yml`).** Runs the eval on push to `main` and on PRs that touch `agents/`, `commands/`, `skills/`, `test/fixtures/`, the runner itself, or the workflow. Uploads `logs/` as a build artifact on failure. All third-party actions are pinned to 40-hex commit SHAs, in line with the plugin's own supply-chain rule.
 - **README "Running the eval locally" section** documenting prerequisites, invocation, flags, and the assertion tolerance model.
 - **`.gitignore` entry for `logs/`** so eval output stays untracked.
+- **Phoenix mass-assignment rule** in the framework-aware pack at `agents/security-reviewer.md`. Flags `Ecto.Changeset.cast/3` calls reached from `Phoenix.Controller` actions or `Phoenix.LiveView` `handle_event` clauses whose allow-list is `__MODULE__.__schema__(:fields)`, `Map.keys(attrs)`, or an explicit list that includes privileged fields (`:role`, `:is_admin`, `:owner_id`, `:user_id`, `:permissions`). Maps to `input_validation`. Phoenix analog of the Rails `params.permit!` rule. Comes with `test/fixtures/phoenix_mass_assignment.ex` (positive control: controller updates a `User` schema via `cast(attrs, __MODULE__.__schema__(:fields))` exposing `:role` and `:is_admin` to client write) and an `EXPECTED.md` entry at severity `high`, `CWE-915`, `A04:2021`.
 
 ## [2.0.0] - 2026-05-13
 

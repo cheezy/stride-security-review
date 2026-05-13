@@ -32,6 +32,7 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 
 - [ ] `django_mark_safe_xss.py` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Django view wraps `request.GET.get("bio")` with `mark_safe`. Django/Python rule pack.
 - [ ] `phoenix_raw_xss.ex` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Phoenix LiveView renders user-supplied `q` via `Phoenix.HTML.raw`. Phoenix/Elixir rule pack.
+- [ ] `phoenix_mass_assignment.ex` → input_validation (high), `cwe: ["CWE-915"]`, `owasp: ["A04:2021"]` — Phoenix controller pipes `user_params` into an `Ecto.Changeset.cast/3` whose allow-list is `__MODULE__.__schema__(:fields)`, exposing privileged `:role` and `:is_admin` fields to client write. Phoenix/Elixir rule pack — analog of Rails `params.permit!`.
 - [ ] `rails_html_safe_xss.rb` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Rails controller exposes `params[:comment]` for `.html_safe` rendering in the corresponding view. Rails/Ruby rule pack.
 
 ### CI/CD pipeline rule pack

@@ -73,6 +73,7 @@ Subsections below are in alphabetical order by pack name (Django/Python, Phoenix
 | `Plug.CSRFProtection` disabled | insecure_config | A pipeline that omits `:protect_from_forgery` plug while serving state-changing routes, or a `Plug.CSRFProtection.skip_csrf_protection/1` call on a state-changing pipeline. |
 | `Ecto.Query.fragment` with string interpolation | injection | A `fragment("...#{user_input}...")` (literal interpolation) call, distinct from the safe `fragment("? = ?", field, ^user_input)` (positional binding) form. The interpolated form bypasses Ecto's parameterized-query default. |
 | LiveView event handler trusts `phx-value-id` without re-scoping | authorization | A `handle_event` clause that calls `Repo.get(Schema, id)` or `Repo.get!(Schema, id)` without re-verifying the loaded record belongs to `socket.assigns.board` (or whichever scope is mounted). Common shape in multi-tenant LiveView apps. |
+| `Ecto.Changeset.cast/3` with no explicit allow-list | input_validation | `cast(struct, attrs, __MODULE__.__schema__(:fields))`, `cast(struct, attrs, Map.keys(attrs))`, or an explicit allow-list that includes privileged fields (`:role`, `:is_admin`, `:owner_id`, `:user_id`, `:permissions`) on a changeset reached from a `Phoenix.Controller` action or `Phoenix.LiveView` `handle_event`. Lets any client-controlled attribute write to the schema. Analog of Rails `params.permit!`. Do NOT flag schema-internal helpers called only from trusted code, or LiveView form changesets bound to a struct the user cannot otherwise create. |
 
 ### Rails/Ruby rule pack
 
