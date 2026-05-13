@@ -48,7 +48,7 @@ If the mode tag is missing, assume `diff` — that is the historical default and
 
 For codebases written in a specific web framework, additional idiom-level rules apply on top of the universal vulnerability classes. Each rule pack activates only when the file under review shows a signal characteristic of that framework — file extension AND import detection, not extension alone. Rules in each pack map to one of the existing universal vulnerability_class values; framework-specific rule packs do NOT introduce new enum values.
 
-Subsections below are in alphabetical order by pack name (Django/Python, Phoenix/Elixir, Rails/Ruby) to avoid implying any single stack is the canonical example. Adding a fourth pack (Spring, Express, Gin, Laravel, FastAPI, etc.) follows the same template.
+Subsections below are in alphabetical order by pack name (Django/Python, Phoenix/Elixir, Rails/Ruby) to avoid implying any single stack is the canonical example. The framework-agnostic Web defense-in-depth pack follows the framework packs as a structural sibling — it rides on top of whichever framework is active. Adding a fourth framework pack (Spring, Express, Gin, Laravel, FastAPI, etc.) follows the same template.
 
 ### Django/Python rule pack
 
@@ -86,6 +86,21 @@ Subsections below are in alphabetical order by pack name (Django/Python, Phoenix
 | `protect_from_forgery` disabled | insecure_config | A controller that explicitly calls `skip_forgery_protection` or sets `protect_from_forgery with: :null_session` on an action handling POST/PUT/PATCH/DELETE. State-changing requests without CSRF protection are forgeable from cross-origin contexts. Do NOT flag a JSON-API controller using `ActionController::API` (no CSRF middleware by default) AND requiring an `Authorization: Bearer` token on every endpoint. |
 | `params.permit!` mass-assignment | authorization | `params.permit!` (no allow-list), `params.require(:foo).permit!`, or `@user.attributes = params[:user]` without a Strong-Parameters allow-list feeding into `Model.create` / `Model.update` / `.save` on a model with privileged fields (`admin`, `role`, `owner_id`). Lets any client-controlled attribute write to the model. Do NOT flag `params.permit(:name, :email)` with an explicit allow-list that excludes sensitive fields. |
 | `eval`/`send`/`instance_eval` with user input | xss_or_code_exec | `eval(params[:expr])`, `obj.send(params[:method].to_sym)`, or `obj.instance_eval(params[:code])` where the method name, symbol, or expression traces to user input. Allows arbitrary method invocation or code execution. Do NOT flag `obj.send(:known_method)` with a constant symbol, or `obj.public_send` with a value validated against an explicit allow-list. |
+
+### Web defense-in-depth
+
+**Activation:** the file under review is a framework middleware, endpoint, or response-handling configuration site — concrete signals per ecosystem: a Django `MIDDLEWARE` list / `SECURE_*` settings block, a Phoenix `Endpoint`/`Plug` module with `put_resp_header` / `force_ssl`, a Rails `ApplicationController` / `config.action_dispatch.default_headers`, an Express middleware mount (`app.use(helmet())`), or any cross-framework HTTP response wrapper. Activation is response-shape-based rather than file-extension-based — this pack rides on top of the framework packs above.
+
+| Rule | Maps to | What to look for |
+|---|---|---|
+| Missing `Content-Security-Policy` on HTML responses | insecure_config | An HTML-returning route or response builder (Django `TemplateView`/`render`, Phoenix `render`, Rails ERB action, Express `res.render`) that ships with no `Content-Security-Policy` header set anywhere in the response pipeline (middleware, Plug, before_action, or `default_headers`). Missing CSP amplifies any XSS to full-page takeover. Do NOT flag pure JSON-API responses — CSP applies to HTML rendering, not `application/json`. |
+| Missing `Strict-Transport-Security` (HSTS) | insecure_config | An HTTPS-serving production config that does not emit `Strict-Transport-Security` (Django `SECURE_HSTS_SECONDS = 0` or unset, Phoenix `force_ssl: []` without `hsts: true`, Rails `config.force_ssl = false` or missing). Without HSTS a single plaintext request can hijack the session via downgrade. Do NOT flag dev/test config files; do NOT flag HTTP-only services where HTTPS is genuinely not in scope. |
+| Missing `X-Frame-Options` / `frame-ancestors` | insecure_config | An HTML-returning response pipeline with neither `X-Frame-Options: DENY|SAMEORIGIN` nor a CSP `frame-ancestors` directive. Allows clickjacking via iframe embedding. Do NOT flag responses that intentionally allow embedding (oembed endpoints, public widgets) when an explicit allow-list of embedding origins is documented in the same file. |
+| Cookie `Set-Cookie` without `Secure` / `HttpOnly` / `SameSite` | insecure_config | A session, CSRF, or auth cookie set via Django `SESSION_COOKIE_SECURE = False` / `SESSION_COOKIE_HTTPONLY = False` / `SESSION_COOKIE_SAMESITE = None`, Phoenix `Plug.Session` opts missing `secure: true` / `http_only: true`, Rails `config.session_store ... secure: false`, or Express `cookie-session` / `express-session` instantiated without `secure: true` / `httpOnly: true` / `sameSite`. Sensitive cookies without these flags are interceptable, JS-readable, or CSRF-replayable. Do NOT flag non-session marketing/analytics cookies or cookies set only in development environments. |
+
+Severity for missing-header findings is **medium** when the response is HTML and the framework provides safe defaults the developer disabled; **high** when the response carries an authenticated session and the missing flag (Secure / HttpOnly) leaks the cookie. Confidence is **high** when the missing header is verifiable from the response-pipeline config alone, **medium** when the agent has to infer from a middleware chain.
+
+These rules are explicitly defense-in-depth — when a primary XSS / CSRF / session-hijack finding is already raised on the same response site, the missing-header finding is a sibling note, not a duplicate.
 
 ### Adding a new framework pack
 

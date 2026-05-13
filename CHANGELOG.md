@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [2.2.0] - 2026-05-13
 
+### Added
+
+- **Web defense-in-depth pack** in `agents/security-reviewer.md` between the Rails pack and "Adding a new framework pack". Framework-agnostic — activates on middleware / Endpoint / response-pipeline shapes rather than file extension. Four rules, all mapping to `insecure_config`: (1) missing `Content-Security-Policy` on HTML responses, (2) missing `Strict-Transport-Security` (HSTS) in production HTTPS configs, (3) missing `X-Frame-Options` / `frame-ancestors`, (4) `Set-Cookie` without `Secure` / `HttpOnly` / `SameSite` on session/auth cookies. Severity medium for the header rules; high when an authenticated session cookie is missing `Secure` or `HttpOnly`. The pack is explicitly defense-in-depth — a sibling-note finding when a primary XSS/CSRF/session-hijack issue is already raised on the same response site, never a duplicate. Comes with positive-control fixtures `test/fixtures/django_missing_headers.py` and `test/fixtures/phoenix_missing_headers.ex` plus EXPECTED.md entries (the eval asserts the high-severity cookie-flags finding; the medium-severity header findings are bonus).
+
 ### Changed
 
 - **Added MAESTRO mapping guidance for non-AI framework findings.** The MAESTRO 7-layer subsection at `agents/security-reviewer.md` previously said to omit `maestro_layer` for classic web vulnerabilities — leaving per-run inconsistency in the `By MAESTRO layer` summary section. Now: data-flow vulnerabilities (injection, XSS, mass-assignment, SSRF, open redirect, deserialization) map to `data-operations`; access-control / audit / config vulnerabilities (missing auth, CSRF disabled, `DEBUG = True`, missing security headers) map to `security-compliance`. The other five layers remain AI-specific. `commands/security-review.md` was updated to reference this mapping rather than re-specify it.

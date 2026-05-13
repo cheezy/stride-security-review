@@ -35,6 +35,11 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `phoenix_mass_assignment.ex` → authorization (high), `cwe: ["CWE-915"]`, `owasp: ["A04:2021"]` — Phoenix controller pipes `user_params` into an `Ecto.Changeset.cast/3` whose allow-list is `__MODULE__.__schema__(:fields)`, exposing privileged `:role` and `:is_admin` fields to client write. Phoenix/Elixir rule pack — analog of Rails `params.permit!`. The actual harm is privilege escalation (writing `:is_admin`), so the class is `authorization`, not `input_validation`.
 - [ ] `rails_html_safe_xss.rb` → xss_or_code_exec (high), `cwe: ["CWE-79"]`, `owasp: ["A03:2021"]` — Rails controller exposes `params[:comment]` for `.html_safe` rendering in the corresponding view. Rails/Ruby rule pack.
 
+### Web defense-in-depth pack
+
+- [ ] `django_missing_headers.py` → insecure_config (high), `cwe: ["CWE-614"]`, `owasp: ["A05:2021"]` — Django production settings with MIDDLEWARE list omitting SecurityMiddleware, `SESSION_COOKIE_SECURE = False`, `SESSION_COOKIE_HTTPONLY = False`, no `SECURE_HSTS_SECONDS`, no CSP. Asserts the cookie-flags finding at severity high; CSP/HSTS/X-Frame-Options at medium are bonus findings expected on the same file but not gated here.
+- [ ] `phoenix_missing_headers.ex` → insecure_config (high), `cwe: ["CWE-614"]`, `owasp: ["A05:2021"]` — Phoenix Endpoint with no `force_ssl`, no `put_secure_browser_headers/2`, and `Plug.Session` opts of `secure: false, http_only: false`. Asserts the cookie-flags finding at severity high; CSP / HSTS / X-Frame-Options at medium are bonus findings expected on the same file but not gated here.
+
 ### CI/CD pipeline rule pack
 
 - [ ] `ci_cd/github_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — two unpinned action references (`@v4`, `@main`); third step pinned to a 40-hex SHA must NOT trigger (negative case). GitHub Actions ecosystem.
