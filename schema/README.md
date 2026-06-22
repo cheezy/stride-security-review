@@ -37,3 +37,14 @@ The agent's native finding schema and the SARIF v2.1.0 result shape don't line u
 | `maestro_layer` (when `--maestro`) | appended to `results[].properties.tags[]` as `maestro:<layer-id>` |
 
 `summary.files_reviewed`, `summary.files_skipped`, and `summary.findings_by_severity` do NOT round-trip into SARIF — SARIF has no per-run summary slot for those. Get them via a separate `--json` invocation.
+
+## Two `version` fields
+
+The SARIF document carries two unrelated `version` values, and they must not be confused:
+
+| SARIF field | Meaning | Value |
+|---|---|---|
+| top-level `version` | SARIF **specification** version | Fixed at `2.1.0` |
+| `runs[0].tool.driver.version` | This **plugin's** version | Tracks `.claude-plugin/plugin.json` |
+
+**Maintenance note:** `runs[0].tool.driver.version` MUST equal the plugin version in `.claude-plugin/plugin.json` (the command sources it from there at emit time rather than hardcoding a literal). The top-level SARIF spec `version` stays `2.1.0` and is independent of plugin releases — do not bump it when the plugin version changes.
