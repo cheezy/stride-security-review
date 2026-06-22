@@ -43,6 +43,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
+      # Fixture/EXPECTED.md parity guard — no API key, no Claude CLI. Runs first
+      # so a fixture added without its EXPECTED.md row (or vice versa) fails fast
+      # and cheap, before any API spend.
+      - name: Check fixture/EXPECTED.md parity
+        run: bash scripts/check_fixtures.sh
+
       # Pure deterministic-transform tests — no API key, no Claude CLI. Runs
       # before the CLI install and the API-spending eval so a transform
       # regression fails fast and cheap.
