@@ -55,10 +55,28 @@ jobs:
       - name: Run transform tests
         run: bash scripts/run_transform_tests.sh
 
+      # The agent eval below needs ANTHROPIC_API_KEY; everything above does not.
+      # When the secret is absent (a fork, or a repo that has not configured it),
+      # skip the CLI install + eval instead of failing the whole pipeline — all the
+      # key-free verification (fixture parity, transform tests) has already run.
+      - name: Detect ANTHROPIC_API_KEY
+        id: apikey
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Agent eval skipped::ANTHROPIC_API_KEY is not configured — skipping the Claude CLI install and the agent eval (scripts/run_eval.sh). Fixture parity and transform tests still ran and passed."
+          fi
+
       - name: Install Claude Code CLI
+        if: steps.apikey.outputs.present == 'true'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Run eval
+        if: steps.apikey.outputs.present == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: bash scripts/run_eval.sh

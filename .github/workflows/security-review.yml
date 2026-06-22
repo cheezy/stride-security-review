@@ -43,11 +43,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
+      # The security review needs ANTHROPIC_API_KEY. When it is absent (a fork, or a
+      # repo that has not configured the secret), skip the review with a notice
+      # instead of failing the gate: there is no offline check this workflow can run
+      # without the key, so a missing key must not red-X every pull request.
+      - name: Detect ANTHROPIC_API_KEY
+        id: apikey
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Security review skipped::ANTHROPIC_API_KEY is not configured — skipping the security-review gate. Add the secret to enable it."
+          fi
+
       - name: Install Claude Code CLI
+        if: steps.apikey.outputs.present == 'true'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Run security review
         id: review
+        if: steps.apikey.outputs.present == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -104,7 +122,7 @@ jobs:
 
       # actions/upload-artifact v4.4.3 — keep the JSON for triage.
       - name: Upload review artifact
-        if: always()
+        if: always() && steps.apikey.outputs.present == 'true'
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
         with:
           name: security-review
