@@ -128,6 +128,13 @@ detect_lang() {
     *.ex|*.exs) printf 'elixir' ;;
     *.yml|*.yaml) printf 'yaml' ;;
     *.sh)  printf 'bash' ;;
+    *.kt|*.kts) printf 'kotlin' ;;
+    *.swift) printf 'swift' ;;
+    *.m|*.mm) printf 'objc' ;;
+    *.h)   printf 'objc' ;;
+    *.jsx) printf 'javascript' ;;
+    *.tsx) printf 'typescript' ;;
+    *.xml|*.plist) printf 'xml' ;;
     Dockerfile*) printf 'dockerfile' ;;
     *)     printf 'text' ;;
   esac
@@ -343,6 +350,41 @@ emit_tap() {
   printf '%s %d - %s (%s)\n' "$status" "$n" "$fixture" "$detail"
 }
 
+# validate_findings_schema <json_file>
+# Asserts every finding in the agent JSON carries the full documented per-finding
+# schema (severity, file, line, vulnerability_class, cwe, owasp, description,
+# remediation, confidence) AND that cwe/owasp are non-empty arrays for every
+# non-info finding (the plugin's contract is that concrete findings always map to
+# a CWE and OWASP category). Prints each offending finding to stderr and returns
+# 1 on any violation; returns 0 when all findings conform (including the empty
+# findings list a clean fixture or the --dry-run stub produces).
+validate_findings_schema() {
+  local json="$1"
+  local required='["severity","file","line","vulnerability_class","cwe","owasp","description","remediation","confidence"]'
+  local violations
+  violations=$(jq -r --argjson req "$required" '
+    [ .findings // []
+      | to_entries[]
+      | .key as $i | .value as $f
+      | ([ $req[] | . as $k | select(($f | has($k)) | not) ]) as $missing
+      | (if ($f.severity != "info")
+           and ((((($f.cwe) // []) | length) == 0) or (((($f.owasp) // []) | length) == 0))
+         then ["cwe/owasp empty for non-info finding"] else [] end) as $cweowasp
+      | ($missing + $cweowasp) as $problems
+      | select(($problems | length) > 0)
+      | "finding[\($i)] \($f.vulnerability_class // "?")@\($f.file // "?"):\($f.line // "?") — \($problems | join("; "))"
+    ] | .[]
+  ' "$json" 2>/dev/null || true)
+  if [ -n "$violations" ]; then
+    {
+      printf '  --- schema violation (%s)\n' "$json"
+      printf '  %s\n' "$violations"
+    } >&2
+    return 1
+  fi
+  return 0
+}
+
 main() {
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -413,6 +455,12 @@ main() {
     local json
     if ! json="$(invoke_agent "$path" "$stem")"; then
       emit_tap "$n" "not ok" "$path" "$detail (agent invocation failed)"
+      fails=$((fails+1))
+      continue
+    fi
+
+    if ! validate_findings_schema "$json"; then
+      emit_tap "$n" "not ok" "$path" "$detail (schema violation)"
       fails=$((fails+1))
       continue
     fi
