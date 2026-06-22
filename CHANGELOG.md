@@ -4,6 +4,22 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-06-22
+
+A test-coverage, tooling, and documentation-accuracy release. The analysis rules in the agent prompt are unchanged; this release closes coverage gaps in the eval suite, adds automated tests for the command's deterministic transforms, and corrects documentation that had drifted past the code.
+
+### Added
+
+- **Golden-file tests for the command's deterministic transforms (W1281).** New `scripts/sarif_transform.sh` is a pure (no network, no Claude CLI, no secrets) reference implementation of the four deterministic transforms specified only in prose in `commands/security-review.md`: the Step 4.6 fingerprint (lowercase SHA-256 of `vulnerability_class|file|line|first-80-chars-of-description`), the Step 4b order-stable dedup keyed by `(file, line, vulnerability_class)`, the Step 5 SARIF v2.1.0 mapping (severity→level/security-severity, tags, partialFingerprints, driver.version sourced from `plugin.json`), and the Step 6 fail-on threshold counting (info never trips). New `scripts/run_transform_tests.sh` is a TAP-13 runner with 22 checks combining golden-file diffs (`test/golden/`) with explicit spec-value assertions and a corruption self-test. Wired into `.github/workflows/eval.yml` ahead of the CLI install and API-keyed eval, so a transform regression fails fast with no API spend.
+- **Fixtures for the four previously-uncovered CI/CD platforms and two supply-chain sub-rules (W1278).** The CI/CD pack advertised eight platforms but shipped fixtures for only four; the supply-chain pack documented five sub-rules but had none for "lockfile drift" or "typosquat". Added `ci_cd/azure_unpinned.yml`, `ci_cd/drone_unpinned.yml`, `ci_cd/jenkins_unpinned.Jenkinsfile`, `ci_cd/tekton_unpinned.yml`, `supply_chain_lockfile_drift.json`, and `supply_chain_typosquat.txt`, each with a matching `EXPECTED.md` row (all map to the existing `supply_chain` enum). Fixture/expectation count is now **70**.
+- **Fixture/EXPECTED.md parity guard (W1280).** New `scripts/check_fixtures.sh` fails if any fixture file lacks an `EXPECTED.md` row or any row names a missing fixture, run as a fast pre-step in `eval.yml` (no API key) so hand-maintained parity can't silently drift.
+- **Per-finding schema validation in the eval runner (W1279).** `scripts/run_eval.sh` now asserts every agent finding carries the full documented schema (`severity`, `file`, `line`, `vulnerability_class`, `cwe`, `owasp`, `description`, `remediation`, `confidence`) and that `cwe`/`owasp` are non-empty for non-info findings; `detect_lang` gained the newer framework-pack extensions (`.kt`/`.kts`, `.swift`, `.m`/`.mm`/`.h`, `.jsx`, `.tsx`, `.xml`/`.plist`).
+
+### Fixed
+
+- **SARIF `tool.driver.version` drift (W1277).** The SARIF `runs[0].tool.driver.version` was hardcoded to `2.1.0` while the plugin had moved on, so every SARIF report mislabeled the tool version to consumers like GitHub Code Scanning. It now tracks `.claude-plugin/plugin.json` (sourced at emit time, so it can't refreeze). The top-level SARIF spec `version` stays `2.1.0`. Documented the distinction in `schema/README.md`.
+- **Documentation drift.** The README eval-count comment (`all 23 expectations` → count-agnostic, W1274), the stale `EXPECTED.md` "Full-scan scenario" (twelve files / eleven findings / fixed severity totals → count-agnostic, W1275), and the incomplete CHANGELOG version-link footer (missing 2.3.0/2.2.0/2.1.0/1.2.2/1.2.1, W1276) were corrected.
+
 ## [2.3.0] - 2026-05-13
 
 ### Added
@@ -157,6 +173,7 @@ Initial release.
 - **False-positive filter** — deliberate exclusions for DoS-only, rate-limiting, memory-exhaustion, and pure-style concerns.
 - **`security-review-essentials` skill** documenting the slash command's surface and customization knobs.
 
+[2.4.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.0
 [2.3.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.3.0
 [2.2.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.2.0
 [2.1.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.1.0

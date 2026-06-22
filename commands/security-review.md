@@ -270,7 +270,7 @@ Active only when `SARIF_MODE=true`. The transform converts the agent's native fi
       "tool": {
         "driver": {
           "name": "stride-security-review",
-          "version": "2.3.0",
+          "version": "2.4.0",
           "informationUri": "https://github.com/cheezy/stride-security-review",
           "rules": [ /* one entry per distinct vulnerability_class present in findings */ ]
         }
@@ -283,7 +283,7 @@ Active only when `SARIF_MODE=true`. The transform converts the agent's native fi
 
 SARIF requires at least one `runs[]` entry, so emit the single-run object even when there are zero findings; in that case `results` is an empty array.
 
-**Two distinct `version` fields — do not conflate them.** The top-level `version` (`"2.1.0"`) is the **SARIF specification version** and is fixed at `2.1.0` regardless of plugin release. The `runs[0].tool.driver.version` is the **plugin's own version** and MUST track the value in `.claude-plugin/plugin.json` — read it from there (the `version` key) rather than emitting a hardcoded literal, so it never drifts from the released plugin version. The `2.3.0` shown above is illustrative of the current plugin version; source the live value at emit time.
+**Two distinct `version` fields — do not conflate them.** The top-level `version` (`"2.1.0"`) is the **SARIF specification version** and is fixed at `2.1.0` regardless of plugin release. The `runs[0].tool.driver.version` is the **plugin's own version** and MUST track the value in `.claude-plugin/plugin.json` — read it from there (the `version` key) rather than emitting a hardcoded literal, so it never drifts from the released plugin version. The `2.4.0` shown above is illustrative of the current plugin version; source the live value at emit time.
 
 **Per-rule entry (deduplicated from findings):**
 
