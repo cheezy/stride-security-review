@@ -27,6 +27,8 @@ Smoke-test fixtures for the security-reviewer agent. Each fixture is a small pie
 - [ ] `curl_pipe_sh.sh` → supply_chain (medium), `cwe: ["CWE-494"]`, `owasp: ["A08:2021"]` — installer script pipes `curl` and `wget` output directly into `sh`/`bash` with no signature or checksum verification.
 - [ ] `github_workflow_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — GitHub Actions referencing third-party actions by `@v4` / `@main` floats instead of SHA. GitHub-Actions ecosystem coverage.
 - [ ] `gitlab_ci_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — GitLab CI `include` referencing a remote pipeline by branch/tag. GitLab CI ecosystem coverage — proves the rule is platform-neutral.
+- [ ] `supply_chain_lockfile_drift.json` → supply_chain (low), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — manifest+lockfile pair embedded in one file: `package.json` declares `left-pad` and the historically-compromised `event-stream`, but `package-lock.json` pins neither (manifest updated without regenerating the lockfile). Lockfile-drift sub-rule positive control. Lockfile drift is inherently a two-file comparison, so both files are embedded as a single reviewable unit; severity `low` per the supply-chain rubric (deterministic-build issue unless the drift introduces an unverified new dependency).
+- [ ] `supply_chain_typosquat.txt` → supply_chain (low), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — pip requirements file containing `reqeusts` (typosquat of `requests`) and `python-dateutl` (typosquat of `python-dateutil`) alongside legitimate packages. Typosquat/hallucinated-package sub-rule positive control; severity `low` (heuristic, no registry lookup — `low` for a plain typo per the supply-chain rubric).
 
 ### Framework-aware rule packs
 
@@ -91,6 +93,10 @@ These fixtures are look-alike-but-safe versions of patterns that should fire els
 - [ ] `ci_cd/gitlab_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — two `include:` references using branch / tag refs instead of SHA. GitLab CI ecosystem.
 - [ ] `ci_cd/circleci_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — orb references using semver (`@4.1.0`) and `@volatile`; both are mutable. CircleCI ecosystem.
 - [ ] `ci_cd/bitbucket_secrets_in_fork.yml` → insecure_config (high) AND insecure_config (high), `cwe: ["CWE-732", "CWE-200"]`, `owasp: ["A05:2021", "A01:2021"]` — pull-request pipeline runs with `deployment: production` (exposes the deploy secret on fork-triggered builds, Rule 3) AND embeds `$BITBUCKET_PR_TITLE` in the same `curl` call that carries `$PRODUCTION_DEPLOY_TOKEN` (Rule 4). Bitbucket Pipelines ecosystem.
+- [ ] `ci_cd/azure_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — Azure Pipelines `resources.repositories` references a template repo by `ref: refs/heads/main` (branch float, not a pinned commit SHA). CI/CD Rule 1. Azure Pipelines ecosystem coverage.
+- [ ] `ci_cd/drone_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — Drone steps reference plugin/images by floating tag (`node:20`, `plugins/docker:latest`, `plugins/slack@main`) instead of an immutable digest. CI/CD Rule 1. Drone ecosystem coverage.
+- [ ] `ci_cd/jenkins_unpinned.Jenkinsfile` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — Jenkins declarative pipeline loads `@Library('build-shared@main')` from a mutable branch rather than a pinned commit SHA. CI/CD Rule 1. Jenkins ecosystem coverage.
+- [ ] `ci_cd/tekton_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — Tekton resolves a remote Task bundle by floating tag (`git-clone:latest`) and runs a step image by version tag, not an immutable digest. CI/CD Rule 1. Tekton ecosystem coverage.
 
 ## How to run the smoke test
 
