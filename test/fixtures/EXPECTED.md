@@ -106,7 +106,7 @@ These fixtures are look-alike-but-safe versions of patterns that should fire els
 
 ## Full-scan scenario
 
-Full-scan mode (`--full`, added in v1.1.0) reviews whole files rather than hunks. Because the four fixtures above are deliberately vulnerable code, the expected findings are the **same set** whether they reach the agent through a diff or as whole-file content. The full-scan scenario adds two new things to verify: the file-enumeration filters and the human-readable header.
+Full-scan mode (`--full`, added in v1.1.0) reviews whole files rather than hunks. Because every fixture above is deliberately vulnerable code, the expected findings are the **same set** whether they reach the agent through a diff or as whole-file content. The full-scan scenario adds two things to verify on top of the per-fixture rows above: the file-enumeration filters and the human-readable header.
 
 ### Invocation
 
@@ -118,9 +118,11 @@ This scopes `git ls-files` to `test/fixtures/`, applies the binary and 256 KiB f
 
 ### Expected enumeration result
 
-`git ls-files test/fixtures/` produces twelve tracked files: four universal-class fixtures, seven agentic-class fixtures across Python/TypeScript/Go, plus `EXPECTED.md`. All twelve are text files comfortably under 256 KiB, so all twelve survive the binary and size filters and are handed to the agent. The agent's `summary.files_reviewed` count should equal **12** in this scenario.
+`git ls-files test/fixtures/` produces every tracked fixture in this directory (including the `ci_cd/` subdirectory) plus `EXPECTED.md`. All of them are UTF-8 text comfortably under 256 KiB, so all survive the binary and size filters and are handed to the agent. The agent's `summary.files_reviewed` should therefore equal the count of tracked fixtures plus `EXPECTED.md`. **Do not hardcode that number here** — it grows with every fixture added; the per-fixture rows in the sections above are the authoritative expected-finding set.
 
 ### Expected per-file findings
+
+The per-fixture rows in the sections above (Universal, Agentic, Supply-chain, the framework packs, CI/CD, Web defense-in-depth, and the negative controls) are the authoritative expected-finding set and apply identically in full-scan mode. The table below is a **representative subset** — the original core fixtures — kept as a quick illustration of the `fixture → severity / class / cwe / owasp` shape:
 
 | Fixture | Severity | vulnerability_class | cwe | owasp | One-line rationale |
 |---|---|---|---|---|---|
@@ -137,13 +139,13 @@ This scopes `git ls-files` to `test/fixtures/`, applies the binary and 256 KiB f
 | `agent_trust_boundary.ts` | high | `agent_trust_boundary` | `["CWE-1427"]` | `["A04:2021"]` | Researcher → writer agent pipe with no quarantine/delimiter. |
 | `EXPECTED.md` | — | — | — | — | **Negative case:** documentation file. The agent must NOT produce a finding here. |
 
-A passing full-scan smoke test:
+A passing full-scan run:
 
-- `summary.files_reviewed` is exactly `12` (eleven fixtures + this file).
-- `summary.findings_by_severity` totals `{"critical": 7, "high": 4, "medium": 0, "low": 0, "info": 0}`.
-- No finding is reported on `EXPECTED.md`.
-- The human-readable header reads `Security review (full scan) — 11 findings across 12 files`.
-- The `--json` variant produces the same JSON document as diff mode for the eleven findings, with `summary.files_reviewed` raised to 12.
+- `summary.files_reviewed` equals the number of tracked fixtures plus `EXPECTED.md` — count-agnostic; it grows as fixtures are added.
+- Every fixture's expected finding (per the per-fixture rows in the sections above) appears under its documented `vulnerability_class` and severity, and `summary.findings_by_severity` is the tally of those findings.
+- No finding is reported on `EXPECTED.md` (the negative case).
+- The human-readable header carries the `(full scan)` qualifier and reports the current run's totals, e.g. `Security review (full scan) — N findings across M files`.
+- The `--json` variant produces the same per-finding JSON document shape as diff mode, with `summary.files_reviewed` reflecting the full-mode file count.
 - Each agentic fixture's finding sits under the matching `vulnerability_class` from the agent's "Agentic vulnerability classes" section.
 
 ### Regression checks specific to full mode
