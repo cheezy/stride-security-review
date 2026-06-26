@@ -4,6 +4,12 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-06-26
+
+### Changed
+
+- **CI resilience only — no analysis change.** The `.github/workflows/eval.yml` and `security-review.yml` workflows now skip the `ANTHROPIC_API_KEY`-dependent steps gracefully when the key is unset (e.g. on fork PRs), instead of failing the run. The agent prompt, rule packs, and all shipped plugin behavior are unchanged from v2.4.0; this release touches only repository CI configuration.
+
 ## [2.4.0] - 2026-06-22
 
 A test-coverage, tooling, and documentation-accuracy release. The analysis rules in the agent prompt are unchanged; this release closes coverage gaps in the eval suite, adds automated tests for the command's deterministic transforms, and corrects documentation that had drifted past the code.
