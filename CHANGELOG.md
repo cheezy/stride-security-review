@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — the skill surface refreshed to the current flag inventory (W1474)
+
+The skill still claimed "two customization knobs at v1.0" and documented only `--full` and `--json` composing, so an agent reading it believed six major capabilities — SARIF output, MAESTRO classification, RCI passes, baseline suppression, auto-remediation patches, and the `--fail-on` CI gate — did not exist. The Customization section now lists all ten implemented flags with a one-line purpose each (the `--fail-on` line names its CI-security-gate role, and `--update-baseline` is called out as distinct from `--baseline`), explicitly deferring parsing and semantics to `commands/security-review.md` as the single owner so the skill never becomes a third drifting copy — the exact failure mode behind the `--rci` contradiction. The version-pinned framing is gone, the two original knobs (path scoping, agent-prompt extension) are preserved beneath the inventory, and the composition sentence points at the inventory.
+
 ### Fixed — the --rci out-of-range contradiction resolved with unambiguous clamp semantics (W1473)
 
 The command spec gave two contradictory rules in one paragraph — "integer in 1..3, otherwise default to 1" and "values above 3 are silently clamped" — so `--rci 5` had two documented results differing by triple the review cost. The parsing rule is now single and deterministic, siding with the original design (the flag's own introduction entry said "default 1, clamped to 3"): an integer of at least 1 is consumed and clamped to the cap of 3; a missing, non-integer, or below-1 token is explicitly NOT consumed — it stays in the token list, so a path immediately following bare `--rci` is never eaten as a pass count — and the default is 1. A worked five-row input-to-result table (bare `--rci`, `--rci 2`, `--rci 5`, `--rci foo`, `--rci 0`, each with its token-consumption outcome) means no future reader has to infer. The README flag comment is aligned on the same clamp wording; the cap of 3 and all downstream Step 4.5 consumers are unchanged.

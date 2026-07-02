@@ -53,7 +53,7 @@ The plugin supports two scan modes — pick the one that matches the question yo
 /stride-security-review:security-review --full --json   # full scan, raw JSON output
 ```
 
-`--full` and `--json` compose freely with each other and with path arguments.
+`--full` and `--json` compose freely with each other, with path arguments, and with the other flags — the full flag inventory is summarized under Customization below, with `commands/security-review.md` owning the semantics.
 
 ## When NOT to invoke
 
@@ -93,7 +93,20 @@ If your organization has a stricter policy that wants those classes flagged, ext
 
 ## Customization
 
-Two customization knobs at v1.0:
+The command's current flag surface, one line per flag — parsing and full semantics are owned by `commands/security-review.md`, not restated here:
+
+- `--full` — review every tracked file in the repo instead of the diff against HEAD.
+- `--json` — raw JSON output for piping into tools.
+- `--sarif` — SARIF v2.1.0 output for code-scanning integrations (mutually exclusive with `--json`).
+- `--maestro` — classify each finding by MAESTRO agentic-AI threat layer.
+- `--rci [N]` — run N additional critique-and-refine passes over the findings.
+- `--baseline [path]` — suppress already-acknowledged findings recorded in a baseline file.
+- `--update-baseline` — rewrite the baseline file from the current findings (a distinct flag from `--baseline`).
+- `--patches` — emit a surgical-fix diff alongside each finding.
+- `--base <ref>` — diff against `<ref>...HEAD` instead of HEAD (PR workflows pass the target branch).
+- `--fail-on <severity>` — exit non-zero when findings reach the threshold; this is the CI security gate that blocks merges.
+
+Two further customization knobs:
 
 1. **Scope by path.** Pass paths as arguments to scope the review to a subset of changed files. Useful for monorepos where one team's diff doesn't need review by another team's security baseline.
 2. **Extend the agent prompt.** Fork or patch `agents/security-reviewer.md` to add organization-specific vulnerability classes or to tighten/loosen the false-positive filter. The output schema is the contract — keep that stable so downstream tooling continues to parse correctly.
