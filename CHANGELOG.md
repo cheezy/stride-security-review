@@ -4,7 +4,7 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.4.2] - 2026-07-02
 
 ### Fixed — CHANGELOG footer link restored and the SARIF version example made release-stable (W1475)
 
@@ -212,6 +212,7 @@ Initial release.
 <!-- Release ritual: every released version adds its link here, newest first, as
      part of cutting the release — the footer must always reach the newest entry
      heading above. -->
+[2.4.2]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.2
 [2.4.1]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.1
 [2.4.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.0
 [2.3.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.3.0

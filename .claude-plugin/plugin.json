@@ -1,7 +1,7 @@
 {
   "name": "stride-security-review",
   "description": "AI-powered security review for code changes via the /stride-security-review:security-review slash command. Two scan modes (diff / --full), seven framework rule packs (Android/Kotlin, Django/Python, Express/Node.js, iOS/Swift, Phoenix/Elixir, Rails/Ruby, React/Next.js) covering the full mobile + web + Node ecosystem with semantic-analysis vulnerability detection. Multi-platform CI/CD rule pack (8 platforms), Web defense-in-depth pack covering security headers (CSP/HSTS/X-Frame-Options/cookie flags), MAESTRO 7-layer agentic-AI classification with explicit non-AI mapping, RCI critique loop, baseline suppression, surgical-fix patches, SARIF v2.1.0 output for GitHub Code Scanning, --fail-on severity gating for CI, and --base <ref> for PR-against-base diffs. Ships a reference GitHub Actions workflow and a TAP 13 eval runner over 70 fixtures with positive-and-negative-control coverage, plus golden-file tests for the deterministic SARIF/dedup/fingerprint/fail-on transforms. Loosely based on anthropics/claude-code-security-review.",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "author": {
     "name": "Jeff Morgan",
     "email": "cheezy@letstango.ca"
