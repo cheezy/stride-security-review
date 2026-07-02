@@ -266,7 +266,9 @@ Default behavior (no `--fail-on` flag) preserves exit 0 always — byte-identica
 `claude -p` exit-code propagation has varied across Claude Code CLI versions. The shipped workflow uses a belt-and-suspenders pattern: it runs the slash command with `--json --fail-on <severity>` AND post-checks the JSON output with `jq`. The gate fails if EITHER the slash command exited non-zero OR jq counts at least one finding at/above the threshold. Either signal is sufficient to block the merge.
 
 ```yaml
-# Snippet from .github/workflows/security-review.yml (full file in this repo)
+# Snippet from .github/workflows/security-review.yml (full file in this repo).
+# The gate lines below are excerpted verbatim from that workflow — it is the
+# source of truth; edit the workflow first and re-excerpt here.
 - name: Run security review
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -276,7 +278,14 @@ Default behavior (no `--fail-on` flag) preserves exit 0 always — byte-identica
     claude_exit=$?
     set -e
     gate_count=$(jq -r '[.findings[]? | select(.severity == "critical")] | length' review.json)
-    if [ "$gate_count" -gt 0 ] || [ "$claude_exit" -eq 1 ]; then exit 1; fi
+    # Fail the job if EITHER the JSON shows gated findings OR `claude -p` itself
+    # exited non-zero (which covers both gate trips [exit 1] and slash-command
+    # usage / dispatch errors [exit 2]). The "$claude_exit -ne 0" form catches all
+    # non-zero exits without conflating them with the no-output guard above.
+    if [ "$gate_count" -gt 0 ] || [ "$claude_exit" -ne 0 ]; then
+      echo "::error::Security review gate tripped (${gate_count} findings at/above ${FAIL_ON}; claude_exit=${claude_exit})."
+      exit 1
+    fi
 ```
 
 ### Tightening the threshold

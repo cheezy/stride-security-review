@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — README CI gating snippet no longer documents a fail-open gate (W1471)
+
+The README's CI snippet — labeled as an excerpt from `.github/workflows/security-review.yml` — gated on `"$claude_exit" -eq 1`, silently passing when the review command failed to dispatch at all (exit 2), the most dangerous false green a security gate can give; anyone who copied the documented version shipped that hole. The snippet now quotes the shipped workflow's gate lines verbatim — `-ne 0` plus the four-line comment explaining that dispatch and usage errors must also fail the gate — and carries a note that the workflow file is the source of truth to edit first. The README prose, snippet, and workflow now all agree on non-zero semantics. The workflow itself was already correct and is untouched.
+
 ### Fixed — framework-pack count and next-pack wording corrected (W1470)
 
 The README said three framework-specific rule packs ship by default directly above its own seven-row pack table, and offered Express — already shipped two rows up — as a hypothetical future pack. The count now reads seven (matching the table and plugin.json's authoritative inventory), the future-pack sentence says "an eighth pack" with Express dropped, and its candidate list (Spring, Gin, Laravel, FastAPI) is now character-identical to the agent prompt's. The agent file's own internal inconsistency is resolved: its "Adding a new framework pack" section now says "An eighth pack follows the same template," agreeing with its already-correct line 51. Table rows and CHANGELOG history untouched.
