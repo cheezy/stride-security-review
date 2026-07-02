@@ -94,7 +94,7 @@ The `security-reviewer` agent (see [`agents/security-reviewer.md`](agents/securi
 | Insecure configuration | CORS `*` with credentials, disabled CSRF, debug mode in prod, missing security headers, disabled cert verification |
 | Supply chain | Floating-tag container base images, `curl \| sh` installers, CI/CD references by branch/tag instead of immutable SHA, manifest/lockfile drift, typosquat or hallucinated package names — multi-platform (Docker, GitHub Actions, GitLab CI, CircleCI, Bitbucket Pipelines, Jenkins) and multi-ecosystem (npm/PyPI/RubyGems/Hex/crates.io/Maven/NuGet/Packagist/Go modules) |
 
-In addition to the universal classes above, three framework-specific rule packs ship by default — they activate based on file extension AND import detection (never extension alone):
+In addition to the universal classes above, seven framework-specific rule packs ship by default — they activate based on file extension AND import detection (never extension alone):
 
 | Pack | Activates on | Idiomatic rules |
 |---|---|---|
@@ -106,7 +106,7 @@ In addition to the universal classes above, three framework-specific rule packs 
 | Rails / Ruby | `.rb` / `.erb` with `ActionController` / `ActiveRecord` / `ApplicationController` references | `html_safe` / `raw()` on user input, `find_by_sql` / `connection.execute` with interpolation, `protect_from_forgery` disabled, `params.permit!` mass-assignment, `eval` / `send` / `instance_eval` with user input, `redirect_to params[:url]` open redirect, `Marshal.load` / `YAML.load` / `YAML.unsafe_load` deserialization, missing `authenticate_user!` on state-changing controllers, unfiltered `render json: @user` leaking `password_digest` / `*_token` / `*_secret` |
 | React / Next.js | `.jsx` / `.tsx` / `.js` / `.ts` with `react` / `next/*` imports, or `pages/api/**` / `app/**/route.{js,ts}` path | `dangerouslySetInnerHTML` with user HTML, Next.js API route without auth check, `redirect()` / `rewrite()` with user-controlled destination, `<a href={user_url}>` / `<img src={user_url}>` with `javascript:` or `data:` scheme bypass, `getServerSideProps` / `getStaticProps` / Route Handler leaking secrets via props |
 
-Each pack's rules map to one of the universal vulnerability classes — there are NO per-framework enum values. Adding a fourth pack (Spring, Express, Gin, Laravel, FastAPI, etc.) follows the documented template in the agent prompt.
+Each pack's rules map to one of the universal vulnerability classes — there are NO per-framework enum values. Adding an eighth pack (Spring, Gin, Laravel, FastAPI, etc.) follows the documented template in the agent prompt.
 
 A dedicated **CI/CD pipeline rule pack** activates on recognized pipeline files across eight platforms (alphabetical): Azure Pipelines, Bitbucket Pipelines, CircleCI, Drone, GitHub Actions, GitLab CI, Jenkins, Tekton. The same five rules apply to every platform: (1) external action / orb / template not pinned to an immutable SHA, (2) overly-broad permissions or scopes, (3) untrusted-ref or fork-PR build patterns, (4) secrets exposed alongside attacker-controlled input, (5) expression / interpolation injection in shell-step bodies. Activation is by file path (`.github/workflows/*.yml`, `.gitlab-ci.yml`, `.circleci/config.yml`, `bitbucket-pipelines.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.drone.yml`, `.tekton/*.yaml`) — generic YAML never triggers these rules. Adding a ninth platform means listing its file path and walking the five existing rules; the rule count stays fixed.
 

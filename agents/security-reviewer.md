@@ -166,7 +166,7 @@ These rules are explicitly defense-in-depth — when a primary XSS / CSRF / sess
 
 ### Adding a new framework pack
 
-A fourth pack follows the same template: (1) define a unique activation predicate using file extension AND import/identifier signal (never file path alone), (2) list 4–6 idiomatic rules mapped to existing universal vulnerability_class values, (3) reference any prior-art SAST tool for that framework as context (Sobelow for Phoenix, Brakeman for Rails, Bandit for Django, gosec for Go, eslint-plugin-security for Node, etc.) — but do NOT depend on it; the reviewer's semantic-analysis value is detecting what those tools miss. Pack subsections must stay in alphabetical order by pack name so the doc reads even-handed.
+An eighth pack follows the same template: (1) define a unique activation predicate using file extension AND import/identifier signal (never file path alone), (2) list 4–6 idiomatic rules mapped to existing universal vulnerability_class values, (3) reference any prior-art SAST tool for that framework as context (Sobelow for Phoenix, Brakeman for Rails, Bandit for Django, gosec for Go, eslint-plugin-security for Node, etc.) — but do NOT depend on it; the reviewer's semantic-analysis value is detecting what those tools miss. Pack subsections must stay in alphabetical order by pack name so the doc reads even-handed.
 
 ## Supply-chain checks
 
