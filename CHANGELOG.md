@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — CHANGELOG footer link restored and the SARIF version example made release-stable (W1475)
+
+Two second occurrences of previously-fixed defect classes. The footer link list ended at 2.4.0 while the top entry was 2.4.1 — regressing exactly what W1276 fixed — so the `[2.4.1]` link is appended in the existing URL format and the footer now opens with a release-ritual comment stating that every released version adds its link there as part of cutting the release. And the command's SARIF example prose claimed the sample driver version "is illustrative of the current plugin version" — stale against plugin.json the moment any release ships — so it now uses the schema README's release-stable phrasing: the example value is illustrative sample content only, and the emitted value tracks `.claude-plugin/plugin.json`, sourced at emit time, never a hardcoded literal. The illustrative number inside the JSON example stays; no existing footer link was touched; the runtime version sourcing (covered by transform test 10) is untouched.
+
 ### Fixed — the skill surface refreshed to the current flag inventory (W1474)
 
 The skill still claimed "two customization knobs at v1.0" and documented only `--full` and `--json` composing, so an agent reading it believed six major capabilities — SARIF output, MAESTRO classification, RCI passes, baseline suppression, auto-remediation patches, and the `--fail-on` CI gate — did not exist. The Customization section now lists all ten implemented flags with a one-line purpose each (the `--fail-on` line names its CI-security-gate role, and `--update-baseline` is called out as distinct from `--baseline`), explicitly deferring parsing and semantics to `commands/security-review.md` as the single owner so the skill never becomes a third drifting copy — the exact failure mode behind the `--rci` contradiction. The version-pinned framing is gone, the two original knobs (path scoping, agent-prompt extension) are preserved beneath the inventory, and the composition sentence points at the inventory.
@@ -205,6 +209,10 @@ Initial release.
 - **False-positive filter** — deliberate exclusions for DoS-only, rate-limiting, memory-exhaustion, and pure-style concerns.
 - **`security-review-essentials` skill** documenting the slash command's surface and customization knobs.
 
+<!-- Release ritual: every released version adds its link here, newest first, as
+     part of cutting the release — the footer must always reach the newest entry
+     heading above. -->
+[2.4.1]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.1
 [2.4.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.0
 [2.3.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.3.0
 [2.2.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.2.0
