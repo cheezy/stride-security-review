@@ -43,7 +43,7 @@ In any git repository, run:
 
 # Recursive Criticism & Improvement (--rci [N]) — run N additional critique passes
 /stride-security-review:security-review --rci                    # one extra critique pass after the first dispatch
-/stride-security-review:security-review --rci 2                  # two extra critique passes (clamped to 3)
+/stride-security-review:security-review --rci 2                  # two extra critique passes (values above 3 clamp to 3)
 /stride-security-review:security-review --rci --full             # critique pass over a full scan (expensive)
 
 # Baseline suppression (--baseline) — suppress already-acknowledged findings
