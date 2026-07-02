@@ -4,7 +4,7 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git ls-files:*), Bash(
 argument-hint: "[--full] [--json | --sarif] [--fail-on <severity>] [--base <ref>] [path ...]"
 ---
 
-Run an AI-powered security review of code changes in this repository. Detects vulnerabilities across injection, authentication/authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, and insecure configuration. Filters out low-impact noise (denial-of-service, rate-limiting, memory-exhaustion).
+Run an AI-powered security review of code changes in this repository. Detects vulnerabilities across injection, authentication/authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, insecure configuration, and supply chain. For codebases that integrate LLMs, AI agents, or Model Context Protocol clients, five additional MAESTRO-derived classes activate when a file imports a recognized LLM/agent/MCP SDK: prompt injection, tool abuse, agent trust boundary, model output execution, and vector store poisoning. Filters out low-impact noise (denial-of-service, rate-limiting, memory-exhaustion).
 
 ## What to do
 

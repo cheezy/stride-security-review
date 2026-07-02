@@ -64,7 +64,7 @@ The plugin supports two scan modes — pick the one that matches the question yo
 
 ## What the agent does
 
-The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin) receives the diff and returns a JSON document with one finding per vulnerability. Vulnerability classes covered: injection, authentication, authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, insecure configuration. For codebases that wire LLMs / AI agents / Model Context Protocol clients into the request flow, five additional MAESTRO-derived classes activate: prompt injection, tool abuse, agent trust boundary, model output execution, vector store poisoning. The agentic classes activate only when the file imports an LLM/agent/MCP SDK — see the "Agentic vulnerability classes" section in the agent prompt for the per-language detection signals.
+The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin) receives the diff and returns a JSON document with one finding per vulnerability. Vulnerability classes covered: injection, authentication, authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, insecure configuration, supply chain. For codebases that wire LLMs / AI agents / Model Context Protocol clients into the request flow, five additional MAESTRO-derived classes activate: prompt injection, tool abuse, agent trust boundary, model output execution, vector store poisoning. The agentic classes activate only when the file imports an LLM/agent/MCP SDK — see the "Agentic vulnerability classes" section in the agent prompt for the per-language detection signals.
 
 The agent operates on **semantic analysis, not pattern matching**. A `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. This is the agent's distinguishing property versus a static analyzer.
 
@@ -76,7 +76,7 @@ Each finding has:
 |---|---|
 | `severity` | `critical`, `high`, `medium`, `low`, or `info` — see the agent prompt for assignment rubric |
 | `file` / `line` | Source location of the issue |
-| `vulnerability_class` | One of the nine classes listed above |
+| `vulnerability_class` | One of the classes listed above, as a snake_case wire value (e.g. `supply_chain`, `prompt_injection`) — the canonical enum value list is owned by the agent prompt (`agents/security-reviewer.md`) |
 | `cwe` | Array of CWE-IDs (e.g. `["CWE-89"]`) — stable identifier for triage and dashboards |
 | `owasp` | Array of OWASP Top 10 2021 category strings (e.g. `["A03:2021"]`) |
 | `description` | What the vulnerability is, what trust boundary is crossed, what the worst realistic outcome is |

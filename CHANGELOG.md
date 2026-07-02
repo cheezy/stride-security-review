@@ -4,6 +4,12 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — consumer docs unified on the fifteen-value vulnerability_class contract (W1469)
+
+The skill and command docs undercounted the wire enum, making six real classes look like schema violations to anyone validating output against them. `skills/security-review-essentials/SKILL.md` now lists all ten universal classes (supply chain was missing) alongside the five MAESTRO-derived agentic classes it already named, and its output-shape table row no longer restates a count — it cites snake_case wire-value examples and defers to the agent prompt (`agents/security-reviewer.md`) as the single owner of the canonical enum value list, so the row cannot drift again. `commands/security-review.md`'s intro gains supply chain and names all five agentic classes with the README's SDK-import activation framing. The agent output contract itself was already correct and is untouched; the v1.0.0 CHANGELOG history stands as written.
+
 ## [2.4.1] - 2026-06-26
 
 ### Changed
