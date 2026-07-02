@@ -333,7 +333,7 @@ The `scripts/run_eval.sh` runner dispatches the `security-reviewer` agent agains
 ### Run
 
 ```bash
-bash scripts/run_eval.sh                                  # every expectation in EXPECTED.md (64 today)
+bash scripts/run_eval.sh                                  # every expectation in EXPECTED.md — check_fixtures.sh prints the current count
 bash scripts/run_eval.sh --fixture test/fixtures/sql_injection.py
 bash scripts/run_eval.sh --dry-run                        # parser/comparator only; no API calls
 bash scripts/run_eval.sh --verbose                        # echo prompts and raw agent JSON to stderr

@@ -9,8 +9,10 @@
 # fast and cheap when the two sets diverge — no API key, no Claude CLI, just a
 # set comparison — so CI catches the drift before spending money on the eval.
 #
-# Exit 0 when the fixture files and the EXPECTED.md rows are in exact parity;
-# exit 1 (listing the offenders) otherwise; exit 2 on a setup error.
+# Exit 0 when the fixture files and the EXPECTED.md rows are in exact parity
+# AND the README's eval-runner annotation stays count-agnostic; exit 1 (listing
+# the offenders) on parity divergence or a hardcoded README fixture-count
+# annotation; exit 2 on a setup error.
 
 set -euo pipefail
 
@@ -59,4 +61,21 @@ fi
 
 count="$(printf '%s\n' "$disk" | sed '/^$/d' | wc -l | tr -d ' ')"
 printf 'OK: %s fixtures, each with exactly one matching EXPECTED.md row.\n' "$count"
+
+# Drift guard: the README's eval-runner annotation must stay count-agnostic.
+# W1274 made it so; "(64 today)" regressed it and went stale within two releases
+# (W1472). Scoped to README lines mentioning run_eval.sh or EXPECTED.md so
+# unrelated numbers (example output, exit-code tables, version strings) and the
+# CHANGELOG's historical snapshot counts can never false-positive.
+README="$ROOT_DIR/README.md"
+if [ -f "$README" ]; then
+  drift="$(grep -nE 'run_eval\.sh|EXPECTED\.md' "$README" | grep -E '\(?[0-9]+ +(today|fixtures?|expectations?)\)?|all [0-9]+ expectations' || true)"
+  if [ -n "$drift" ]; then
+    printf 'FAIL: README.md hardcodes a fixture-count annotation on an eval-runner line.\n' >&2
+    printf 'Keep the comment count-agnostic — this script prints the live count (%s).\n' "$count" >&2
+    printf '%s\n' "$drift" | sed 's/^/  - /' >&2
+    exit 1
+  fi
+fi
+
 exit 0

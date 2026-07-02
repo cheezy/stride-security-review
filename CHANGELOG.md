@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — README fixture count made genuinely count-agnostic, with a drift guard (W1472)
+
+The README's eval-runner annotation has now been wrong twice in two releases: W1274 made it count-agnostic after "all 23 expectations" went stale, then a later count bump re-hardcoded "(64 today)", which immediately drifted (the tree holds 70 fixtures). The annotation now points at the authoritative live source ("check_fixtures.sh prints the current count") instead of embedding a snapshot number, and `scripts/check_fixtures.sh` gained a narrowly-scoped regression guard: after the parity check it fails with a clear message if any README line mentioning `run_eval.sh` or `EXPECTED.md` carries a count annotation ("N today", "(N fixtures/expectations)", or the historical "all N expectations" form) — so the same drift cannot land a third time. The two-stage scoping means example output, exit-code tables, version strings, and the CHANGELOG's historical snapshot counts can never false-positive, and the guard rides the existing eval.yml CI step with no workflow change. The fixture parity logic itself is untouched.
+
 ### Fixed — README CI gating snippet no longer documents a fail-open gate (W1471)
 
 The README's CI snippet — labeled as an excerpt from `.github/workflows/security-review.yml` — gated on `"$claude_exit" -eq 1`, silently passing when the review command failed to dispatch at all (exit 2), the most dangerous false green a security gate can give; anyone who copied the documented version shipped that hole. The snippet now quotes the shipped workflow's gate lines verbatim — `-ne 0` plus the four-line comment explaining that dispatch and usage errors must also fail the gate — and carries a note that the workflow file is the source of truth to edit first. The README prose, snippet, and workflow now all agree on non-zero semantics. The workflow itself was already correct and is untouched.
