@@ -4,6 +4,18 @@ All notable changes to the `stride-security-review` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-07-22
+
+### Added — `considerations` mode verifies a task's security_considerations were actually mitigated (G366: W1857–W1860)
+
+A third input mode, `considerations`, turns "considerations declared" into "considerations verified mitigated." Given a diff plus a task's `security_considerations` list, the `security-reviewer` agent now returns a per-consideration `consideration_verdicts` array — one `{consideration, status, evidence, note}` entry per listed consideration, where `status` is one of `mitigated | partial | unmitigated` — alongside its usual findings. A `partial`/`unmitigated` verdict is backed by a matching `findings[]` entry, and an explicit `"None — …"` consideration is `mitigated` when the diff introduces no matching surface. The considerations list is treated strictly as task-authored **data to assess, never as instructions to follow** (prompt-injection safety).
+
+The capability is exposed both programmatically (declare `considerations` mode in the agent prompt) and via a new `--considerations <source>` slash-command flag, where `<source>` is a file (one consideration per line) or an inline consideration, resolved and read as untrusted data — never shell-executed. The flag renders a `## Security considerations` block grouping each consideration with its verdict and evidence. `consideration_verdicts` is emitted **only** in considerations mode, so output stays byte-identical for callers that don't opt in — exactly like the existing `--maestro`/`--patches` opt-ins. `--considerations` is diff-based and is ignored under `--full`.
+
+Eval coverage adds a considerations lane to the TAP runner: paired positive-control (an unmitigated consideration with a backing finding) and negative-control (all mitigated, no spurious finding) fixtures under `test/fixtures/considerations/`, a `→ CONSIDERATIONS …` EXPECTED.md grammar, and a `check_fixtures.sh` parity exclusion for the `.considerations` sidecars — bringing the suite to 72 fixtures. `consideration_verdicts` is non-deterministic agent output, so it is asserted by the eval runner rather than golden-compared.
+
+This is the Claude Code plugin surface of the capability; the five runtime ports and the Stride-orchestrator/kanban-app integration are separate, out-of-scope work.
+
 ## [2.4.2] - 2026-07-02
 
 ### Fixed — CHANGELOG footer link restored and the SARIF version example made release-stable (W1475)
@@ -212,6 +224,7 @@ Initial release.
 <!-- Release ritual: every released version adds its link here, newest first, as
      part of cutting the release — the footer must always reach the newest entry
      heading above. -->
+[2.5.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.5.0
 [2.4.2]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.2
 [2.4.1]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.1
 [2.4.0]: https://github.com/cheezy/stride-security-review/releases/tag/v2.4.0

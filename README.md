@@ -15,7 +15,7 @@ The plugin auto-discovers the slash command, the agent, and the skill on install
 
 ## Invocation form
 
-Claude Code ships with a built-in `/security-review` command (a diff-only review that does NOT understand this plugin's flags — `--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--patches` are silently ignored). To invoke **this** plugin, use the namespaced form `/stride-security-review:security-review`. All examples below use that form.
+Claude Code ships with a built-in `/security-review` command (a diff-only review that does NOT understand this plugin's flags — `--full`, `--json`, `--maestro`, `--rci`, `--baseline`, `--patches`, `--considerations` are silently ignored). To invoke **this** plugin, use the namespaced form `/stride-security-review:security-review`. All examples below use that form.
 
 > **Renamed in v2.0.0.** This plugin was previously named `security-review`, which created a namespace collision with the Claude Code built-in. The rename to `stride-security-review` resolves the collision: the bare `/security-review` cleanly belongs to the built-in, and this plugin lives at `/stride-security-review:security-review`. If you have scripted invocations of the old namespaced form, update them to the new one.
 
@@ -54,9 +54,14 @@ In any git repository, run:
 # Auto-remediation patches (--patches) — emit surgical-fix diffs alongside findings
 /stride-security-review:security-review --patches                # diff mode + per-finding patch suggestions
 /stride-security-review:security-review --patches --json         # raw JSON includes the patch field
+
+# Considerations mode (--considerations <source>) — verify a task's security_considerations were mitigated
+/stride-security-review:security-review --considerations threat-model.md         # one consideration per line in the file
+/stride-security-review:security-review --considerations "No secrets in logs"    # a single inline consideration
+/stride-security-review:security-review --considerations threat-model.md --json  # raw JSON includes consideration_verdicts
 ```
 
-Diff mode answers *"is this change safe to merge?"* — invoke it before pushing a PR. Full mode answers *"what latent issues are in this codebase right now?"* — invoke it when onboarding the plugin onto an existing repo, or on a periodic posture-check cadence. MAESTRO mode answers *"which architectural layer needs the most attention?"* — invoke it on codebases that wire LLMs / agents / Model Context Protocol clients into the request flow, so findings can be grouped by the seven-layer model from Cloud Security Alliance's MAESTRO framework. The flags compose: `--maestro --full --json lib/` is valid. The output JSON schema is identical in diff and full modes; `--maestro` is the one flag that adds an optional field (`maestro_layer`) to each finding when set.
+Diff mode answers *"is this change safe to merge?"* — invoke it before pushing a PR. Full mode answers *"what latent issues are in this codebase right now?"* — invoke it when onboarding the plugin onto an existing repo, or on a periodic posture-check cadence. MAESTRO mode answers *"which architectural layer needs the most attention?"* — invoke it on codebases that wire LLMs / agents / Model Context Protocol clients into the request flow, so findings can be grouped by the seven-layer model from Cloud Security Alliance's MAESTRO framework. The flags compose: `--maestro --full --json lib/` is valid. The output JSON schema is identical in diff and full modes; `--maestro` is the one flag that adds an optional field (`maestro_layer`) to each finding when set. Considerations mode answers *"were the security considerations this change declared actually mitigated by the diff?"* — pass `--considerations <source>` (a file with one consideration per line, or an inline string) and each listed consideration comes back with a `mitigated` / `partial` / `unmitigated` verdict alongside the usual findings. It is diff-based (ignored under `--full`) and, like `--maestro`/`--patches`, adds its output (the top-level `consideration_verdicts` array) only when the flag is set.
 
 Sample output for a small diff with one finding:
 
@@ -183,6 +188,7 @@ The agent always returns a single fenced ```json document conforming to:
 | `files_skipped` | `--full` is set | Array of `{path, reason}` records for files the binary/size filters dropped. `reason` is one of `binary`, `oversize`, `unreadable`. Always emitted in full mode (even as `[]` to prove the filter ran); omitted in diff mode. |
 | `suppressed_count` | `--baseline` is set | Integer count of findings filtered out by the baseline. Omitted entirely when no baseline is in play. |
 | `rci_passes` | `--rci [N]` is set | Integer recording how many Recursive Criticism & Improvement passes ran on top of the initial dispatch. Omitted when `--rci` is not set. |
+| `consideration_verdicts` | `--considerations <source>` is set | Top-level array with one `{consideration, status, evidence, note}` entry per listed consideration, in order, where `status` is `mitigated` / `partial` / `unmitigated`. A `partial`/`unmitigated` verdict is backed by a matching `findings[]` entry. Omitted entirely when `--considerations` is not set. |
 
 **Cross-batch dedup (full mode).** Full-mode batches are merged with an order-stable dedup pass keyed by `(file, line, vulnerability_class)` — duplicates that surface across batches or RCI passes collapse to the first occurrence. Diff mode is a single dispatch and dedup is a no-op there; the merged document is byte-identical to the agent's output.
 
