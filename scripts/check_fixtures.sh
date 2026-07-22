@@ -24,10 +24,14 @@ EXPECTED="$FIX_DIR/EXPECTED.md"
 [ -d "$FIX_DIR" ] || { printf 'error: fixtures dir not found at %s\n' "$FIX_DIR" >&2; exit 2; }
 [ -f "$EXPECTED" ] || { printf 'error: EXPECTED.md not found at %s\n' "$EXPECTED" >&2; exit 2; }
 
-# Fixture files on disk, relative to test/fixtures/, excluding EXPECTED.md itself.
-# Covers nested subdirectories (e.g. ci_cd/) since the paths in EXPECTED.md rows
-# are likewise relative to test/fixtures/.
-disk="$(cd "$FIX_DIR" && find . -type f ! -name 'EXPECTED.md' | sed 's|^\./||' | sort)"
+# Fixture files on disk, relative to test/fixtures/, excluding EXPECTED.md itself
+# and the considerations-mode `.considerations` sidecars. Covers nested
+# subdirectories (e.g. ci_cd/, considerations/) since the paths in EXPECTED.md
+# rows are likewise relative to test/fixtures/. A `.considerations` file is the
+# input list paired with a considerations-mode `.diff` fixture (see EXPECTED.md
+# "Considerations mode"), not an independently-registered fixture, so it carries
+# no EXPECTED.md row of its own and is excluded from the parity set.
+disk="$(cd "$FIX_DIR" && find . -type f ! -name 'EXPECTED.md' ! -name '*.considerations' | sed 's|^\./||' | sort)"
 
 # Fixture paths referenced by EXPECTED.md checkbox rows: the FIRST backtick-fenced
 # token of each `- [ ] \`path\` → ...` row (same extraction run_eval.sh uses).

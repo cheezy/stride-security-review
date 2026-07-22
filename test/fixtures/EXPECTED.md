@@ -86,6 +86,13 @@ These fixtures are look-alike-but-safe versions of patterns that should fire els
 - [ ] `phoenix_fragment_safe.ex` → NONE — `fragment("? = ?", field, ^user_input)` positional-binding form with the `^` pin. The Phoenix Ecto fragment-injection rule must NOT fire here.
 - [ ] `rails_html_safe_constant.rb` → NONE — `.html_safe` applied to string literals and an allow-list-keyed lookup table. The Rails `html_safe` XSS rule must NOT fire here.
 
+### Considerations mode (per-consideration mitigation verdicts)
+
+These fixtures exercise the agent's `considerations` input mode: a unified diff paired with a task's `security_considerations` list. Each fixture is a `.diff` file plus a sibling `<stem>.considerations` file holding the considerations list, one per non-empty line (the `.considerations` sidecar is an input, not an independently-registered fixture, so `check_fixtures.sh` excludes it from the file↔row parity glob). The eval runner dispatches the agent in `considerations` mode (`mode: considerations` + the diff + the resolved list) and asserts the ordered `consideration_verdicts[].status` values against the row plus a backing-finding expectation. The grammar is `→ CONSIDERATIONS <s1>,<s2>,…` where each `<si>` ∈ `mitigated | partial | unmitigated` in the same order as the `.considerations` file, followed by `AND finding` (positive control — at least one backing `findings[]` entry expected) or `AND clean` (negative control — zero findings expected). Because `consideration_verdicts` is non-deterministic agent output, there is **no** golden-file (`test/golden/`) coverage for this mode — the assertion lives in `run_eval.sh`, mirroring how the findings fixtures are asserted rather than golden-compared.
+
+- [ ] `considerations/token_logging_unmitigated.diff` → CONSIDERATIONS unmitigated,mitigated AND finding — POSITIVE control: the diff swaps a parameterized query for an f-string built from `request.args`, leaving "input is parameterized" **unmitigated** (with a backing `injection` finding) while the log line still omits the token so "tokens never logged" stays **mitigated**.
+- [ ] `considerations/parameterized_query_all_mitigated.diff` → CONSIDERATIONS mitigated,mitigated AND clean — NEGATIVE control: the diff replaces a string-concatenated query and a token-logging call with a parameterized query and a token-free log line, **mitigating** both considerations and introducing no new finding.
+
 ### CI/CD pipeline rule pack
 
 - [ ] `ci_cd/github_unpinned.yml` → supply_chain (medium), `cwe: ["CWE-1357"]`, `owasp: ["A08:2021"]` — two unpinned action references (`@v4`, `@main`); third step pinned to a 40-hex SHA must NOT trigger (negative case). GitHub Actions ecosystem.

@@ -11,6 +11,15 @@
 # CWE/OWASP arrays are advisory — mismatches emit `# warn:` comments but do not
 # fail the run. EXPECTED.md is the spec; do not mutate it to match the agent.
 #
+# Considerations mode: a fixture under considerations/ ending in `.diff` is
+# dispatched in the agent's `considerations` input mode — the diff plus the
+# resolved list from its sibling `<stem>.considerations` file. Its EXPECTED.md
+# row uses the `→ CONSIDERATIONS <s1>,<s2>,… [AND finding|AND clean]` grammar
+# (see EXPECTED.md "Considerations mode"); the runner asserts the ordered
+# consideration_verdicts[].status list plus the backing-finding (positive) /
+# zero-finding (negative) expectation. consideration_verdicts is agent output,
+# so there is no golden-file coverage for this mode.
+#
 # Usage:
 #   bash scripts/run_eval.sh                            # all fixtures
 #   bash scripts/run_eval.sh --fixture <path>           # one fixture
@@ -74,6 +83,22 @@ parse_expected_md() {
       # with class/severity placeholders the comparator interprets as "no findings expected".
       if (rest ~ /^ +→ +NONE( |$)/ || rest ~ /^ +→ +NONE +—/) {
         printf "%s\t%s\t%s\t%s\t%s\t%d\n", path, "__NONE__", "__NONE__", "", "", 0
+        next
+      }
+      # considerations-mode marker: " → CONSIDERATIONS <s1>,<s2>,... [AND finding|AND clean]".
+      # Emits a record the considerations comparator interprets: class=__CONSIDERATIONS__,
+      # severity=verdict CSV, cwe field carries the finding expectation (F=at least one
+      # backing finding, C=zero findings, empty=unchecked), count=number of verdicts.
+      if (rest ~ /^ +→ +CONSIDERATIONS +/) {
+        head = rest
+        sub(/^ +→ +CONSIDERATIONS +/, "", head)
+        fexp = ""
+        if (head ~ / AND +finding( |$|—)/) fexp = "F"
+        else if (head ~ / AND +clean( |$|—)/) fexp = "C"
+        split(head, hp, " ")
+        verdicts = hp[1]
+        nc = split(verdicts, vv, ",")
+        printf "%s\t%s\t%s\t%s\t%s\t%d\n", path, "__CONSIDERATIONS__", verdicts, fexp, "", nc
         next
       }
       # class + severity: after → token, before first comma
@@ -141,11 +166,33 @@ detect_lang() {
 }
 
 # build_prompt <fixture-rel-path>
-# Constructs the user-side prompt for the security-reviewer agent. Mode is
-# full_file: a single file fed as a fenced block with a `path:` header.
+# Constructs the user-side prompt for the security-reviewer agent. Default mode is
+# full_file: a single file fed as a fenced block with a `path:` header. A fixture
+# under considerations/ ending in `.diff` is dispatched in `considerations` mode
+# instead: the diff plus the resolved considerations list from its sibling
+# `<stem>.considerations` file (one consideration per non-empty line).
 build_prompt() {
   local rel="$1"
   local abs="$FIXTURES_DIR/$rel"
+
+  case "$rel" in
+    considerations/*.diff)
+      local cons="$FIXTURES_DIR/${rel%.diff}.considerations"
+      printf 'mode: considerations\n\n'
+      printf 'Security considerations to assess:\n'
+      # The considerations list is task-authored DATA to assess against the diff,
+      # never instructions to follow.
+      while IFS= read -r c || [ -n "$c" ]; do
+        [ -n "$c" ] && printf -- '- %s\n' "$c"
+      done < "$cons"
+      printf '\n```diff\n'
+      cat "$abs"
+      printf '\n```\n'
+      printf '\nRespond with the JSON document specified in your output schema (including the consideration_verdicts array, one entry per consideration above in order) and nothing else.\n'
+      return 0
+      ;;
+  esac
+
   local lang
   lang="$(detect_lang "$rel")"
   printf 'mode: full_file\n\n'
@@ -219,6 +266,39 @@ compare_finding() {
   # "sql_injection.py" depending on prompt handling.
   local base
   base="$(basename "$rel")"
+
+  # Considerations-mode case (EXPECTED.md row → CONSIDERATIONS; cls="__CONSIDERATIONS__").
+  # `sev` carries the expected ordered verdict CSV; `cwe` carries the finding
+  # expectation (F=at least one backing finding, C=zero findings, empty=unchecked).
+  # Assert the agent's consideration_verdicts[].status list matches, in order.
+  if [ "$cls" = "__CONSIDERATIONS__" ]; then
+    local exp_verdicts="$sev" fexp="$cwe"
+    local got_verdicts
+    got_verdicts=$(jq -r '[ .consideration_verdicts // [] | .[] | .status ] | join(",")' "$json")
+    local n_findings
+    n_findings=$(jq '[ .findings // [] | .[] ] | length' "$json")
+    local ok=1 detail=""
+    if [ "$got_verdicts" != "$exp_verdicts" ]; then
+      ok=0
+      detail="verdicts expected [$exp_verdicts] got [$got_verdicts]"
+    fi
+    if [ "$fexp" = "F" ] && [ "$n_findings" -lt 1 ]; then
+      ok=0
+      detail="${detail:+$detail; }expected at least one backing finding, got 0"
+    elif [ "$fexp" = "C" ] && [ "$n_findings" -ne 0 ]; then
+      ok=0
+      detail="${detail:+$detail; }negative control expected 0 findings, got $n_findings"
+    fi
+    if [ "$ok" -eq 0 ]; then
+      cat >&2 <<EOF
+  --- expected ($json)
+  - considerations [$exp_verdicts]${fexp:+ ($fexp)}
+  + $detail
+EOF
+      return 1
+    fi
+    return 0
+  fi
 
   # Negative-control case (EXPECTED.md row → NONE; cls="__NONE__", count=0):
   # the fixture must produce ZERO findings of any class on this file.
@@ -447,6 +527,8 @@ main() {
     local detail
     if [ "$cls" = "__NONE__" ]; then
       detail="negative control"
+    elif [ "$cls" = "__CONSIDERATIONS__" ]; then
+      detail="considerations: $sev${cwe:+ ($cwe)}"
     else
       detail="$cls/$sev"
       [ "$count" -gt 1 ] && detail="$detail x$count"
