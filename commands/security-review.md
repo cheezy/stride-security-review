@@ -150,7 +150,7 @@ Dispatch the Agent tool **once** with `subagent_type: "security-reviewer"`. The 
 4. The full diff text, fenced in a ```diff block.
 5. A reminder that the output must be a single fenced ```json document conforming to the agent's documented schema.
 
-Wait for the agent's response. Parse the fenced JSON. If parsing fails, print a one-line error naming `batch 0 (diff mode)` and include the first 500 characters of the response for the user to inspect — then stop. The parsed JSON IS the final document; no merge step is needed in diff mode.
+Wait for the agent's response. Parse the fenced JSON. If parsing fails, print a one-line error naming `batch 0 (diff mode)` and include the first 500 characters of the response for the user to inspect, then run a final `exit 2` via Bash — do NOT proceed (this matches the Step 1 misuse pattern; the Step 6 exit-code table documents exit 2 for an agent dispatch failure). The parsed JSON IS the final document; no merge step is needed in diff mode.
 
 #### Step 4b: Full mode (`FULL_MODE=true`)
 
@@ -182,7 +182,7 @@ When `MAESTRO_MODE=true`, each finding's JSON gains an optional `maestro_layer` 
 
 **Parallel dispatch.** Batches MAY be dispatched in parallel by making multiple Agent tool calls in a single response. Each batch reviews a disjoint set of files and produces its own JSON document — they cannot interfere. Sequential dispatch also works; choose based on context-window pressure and observed latency. Either way, every batch must complete before Step 5.
 
-**Per-batch error handling.** If any batch returns malformed JSON, print a one-line error naming the batch (`batch <index> of <TOTAL>`) and include the first 500 characters of that batch's response for the user to inspect — then stop. Do not silently drop a failed batch; do not fall back to a partial merge.
+**Per-batch error handling.** If any batch returns malformed JSON, print a one-line error naming the batch (`batch <index> of <TOTAL>`) and include the first 500 characters of that batch's response for the user to inspect, then run a final `exit 2` via Bash — do NOT proceed (this matches the Step 1 misuse pattern; the Step 6 exit-code table documents exit 2 for an agent dispatch failure). Do not silently drop a failed batch; do not fall back to a partial merge.
 
 **Merge rule.** After all batches succeed, merge their JSON documents into a single document of the same shape and hand it to Step 5 as if a single dispatch had produced it. Build the merged document as follows:
 
@@ -206,7 +206,7 @@ For `i` in `1..RCI_PASSES`:
    - The ORIGINAL input that was passed in Step 4 (the diff text in diff mode, OR the per-file content list from the batch that originally produced the finding in full mode — for full mode, dispatch one rci pass per ORIGINAL batch so each critique pass only sees its own batch's files plus its own batch's findings; merge per the same Step 4b merge rule after every pass).
    - A reminder that the output must be a single fenced ```json document, same schema as the prior pass.
 
-2. Parse the returned JSON. If parsing fails, print a one-line error naming the pass (`rci pass <i>`) plus the first 500 characters of the response, and stop — do NOT silently fall back to the prior pass's findings.
+2. Parse the returned JSON. If parsing fails, print a one-line error naming the pass (`rci pass <i>`) plus the first 500 characters of the response, then run a final `exit 2` via Bash — do NOT proceed (this matches the Step 1 misuse pattern; the Step 6 exit-code table documents exit 2 for an agent dispatch failure) and do NOT silently fall back to the prior pass's findings.
 
 3. Replace the working findings document with the new one. Add the pass index to `summary.rci_passes` (an integer counter — schema addition active only when `RCI_PASSES > 0`).
 
