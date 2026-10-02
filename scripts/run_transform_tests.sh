@@ -102,6 +102,15 @@ main() {
     "$(jq -r '.version' "$PLUGIN_JSON")" \
     "$(jq -r '.runs[0].tool.driver.version' "$tmp/sarif.out")"
   assert_eq "sarif: spec version stays 2.1.0" "2.1.0" "$(jq -r '.version' "$tmp/sarif.out")"
+  # The manifest description is what Claude Code's installed-plugin view renders;
+  # keep it a short summary (W2288). jq counts characters, not bytes, and a
+  # missing description counts as 0, which fails rather than passing.
+  desc_len=$(jq -r '(.description // "") | length' "$PLUGIN_JSON")
+  if [ "$desc_len" -gt 0 ] && [ "$desc_len" -le 300 ]; then
+    ok "manifest: plugin.json description is 1-300 characters"
+  else
+    not_ok "manifest: plugin.json description is 1-300 characters" "description length $desc_len (want 1..300)"
+  fi
 
   # ---- dedup --------------------------------------------------------------
   bash "$XFORM" dedup "$INPUT" | jq -S . > "$tmp/dedup.out"

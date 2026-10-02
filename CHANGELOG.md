@@ -37,6 +37,13 @@ Results returned to the main loop totalled 1.94 MB (median 8.1 KB, max 23.3 KB),
 - **A failed write** returns `result: NOT WRITTEN — <reason>` on its own first line, then the full fenced document, with the bound suspended.
 - The result file is the single carve-out from "Do not edit files"; credentials quoted in finding text are written as `[REDACTED — finding text embedded a credential]`. `tools:` is unchanged. **`scripts/check_agent_contract.sh`** (new, run in the eval workflow before any API spend) pins the agent side: the dispatch-line-only rule, the component allow-list, single-quoting, the temp-file name, the unfenced 10-line summary and the `NOT WRITTEN` fallback; stride's hook suite pins the consumer side.
 
+### Changed — `plugin.json` description shortened to a summary and capped at 300 characters (W2288)
+
+Claude Code renders a plugin's `.claude-plugin/plugin.json` description in its installed-plugin view, and this one was a 1,273-character feature inventory — every other Claude Code plugin in the fleet is 97-265 characters. It is now a two-sentence summary that mirrors the stride-marketplace catalog entry (v1.98.0): AI security review via `/stride-security-review:security-review`, diff or full-repo scans with framework rule packs, SARIF with severity gating for CI, and the considerations mode.
+
+- **The inventory moved, it did not disappear**: rule packs, CI platforms, MAESTRO, RCI, SARIF, `--fail-on`, `--base` and `--considerations` are documented in README.md and this changelog; the "Loosely based on anthropics/claude-code-security-review" attribution moved from the manifest to the top of the README.
+- **Pinned**: `scripts/run_transform_tests.sh` gains a TAP check that the description is 1-300 characters (measured in characters with `jq`, so an em dash counts once; a missing description fails). No other `plugin.json` key changed and the version is not bumped.
+
 ## [2.5.2] - 2026-08-21
 
 A housekeeping release. No change to the `/security-review` command, the `security-reviewer` agent, or the analysis methodology.

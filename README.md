@@ -1,6 +1,6 @@
 # stride-security-review
 
-**AI-powered security review of code changes as a Claude Code plugin.**
+**AI-powered security review of code changes as a Claude Code plugin.** Loosely based on [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review).
 
 Run a single slash command — `/stride-security-review:security-review` — to get a structured, severity-graded list of security findings on whatever you've changed. Powered by a dedicated `security-reviewer` agent that uses semantic analysis, not pattern matching, and filters out low-impact noise so the findings you see are the ones worth acting on.
 
