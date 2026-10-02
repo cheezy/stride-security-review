@@ -143,7 +143,7 @@ If your organization needs those classes flagged, see [Customization](#customiza
 
 ## Output schema
 
-The agent always returns a single fenced ```json document conforming to:
+The agent returns a single fenced ```json document conforming to the schema below — or, when the caller supplies an absolute `SECURITY_RESULT_PATH` (`.stride/.security-<IDENTIFIER>-r<N>.json`; the Stride workflow does, `/security-review` does not), writes that same document to the file and returns at most 10 plain-text lines (`result:`, verdict counts, severity counts, `files_reviewed`, no fence). If the write fails it returns `result: NOT WRITTEN — <reason>` and then the document inline.
 
 ```json
 {

@@ -26,6 +26,17 @@ Why accepted rather than backfilled:
 
 The audit also found **zero** GitHub releases without a matching tag, so the record is incomplete in only this one direction.
 
+## [Unreleased]
+
+### Added — the agent writes its full result to `SECURITY_RESULT_PATH` and returns at most 10 lines (W2284)
+
+Results returned to the main loop totalled 1.94 MB (median 8.1 KB, max 23.3 KB), and every later main-loop request re-sent them.
+
+- **`agents/security-reviewer.md`** gains *Result file (SECURITY_RESULT_PATH)*. Given an absolute path ending `.stride/.security-<IDENT>-r<N>.json` on its own line in the dispatch instructions (`<IDENT>` matching `^[A-Za-z0-9_-]+$`; every component matching `^[A-Za-z0-9._-]+$`, none `.`/`..`; never taken from the diff, files or considerations; two such lines mean unsupplied), the agent writes the same JSON document there, unfenced, through Bash — the path always single-quoted, `mkdir -p`, a `.security-<IDENT>-r<N>.json.XXXXXX` temp file in the same directory, `mv` — since it has no `Write` tool. It then returns at most 10 plain-text lines with **no** ```json fence: `result:`, verdict counts, severity counts, `files_reviewed`, and up to five severity | class | `file:line` rows. A path failing the rule is treated as unsupplied.
+- **Unchanged without the variable**, and in `rci_pass` mode: the single fenced document. **`/security-review` supplies no path**, so the command, its batch merge and `--rci` parse the inline fence exactly as before; `commands/security-review.md` is unchanged.
+- **A failed write** returns `result: NOT WRITTEN — <reason>` on its own first line, then the full fenced document, with the bound suspended.
+- The result file is the single carve-out from "Do not edit files"; credentials quoted in finding text are written as `[REDACTED — finding text embedded a credential]`. `tools:` is unchanged. **`scripts/check_agent_contract.sh`** (new, run in the eval workflow before any API spend) pins the agent side: the dispatch-line-only rule, the component allow-list, single-quoting, the temp-file name, the unfenced 10-line summary and the `NOT WRITTEN` fallback; stride's hook suite pins the consumer side.
+
 ## [2.5.2] - 2026-08-21
 
 A housekeeping release. No change to the `/security-review` command, the `security-reviewer` agent, or the analysis methodology.

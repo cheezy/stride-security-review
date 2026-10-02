@@ -55,6 +55,11 @@ jobs:
       - name: Run transform tests
         run: bash scripts/run_transform_tests.sh
 
+      # Text pins on the agent's SECURITY_RESULT_PATH contract (W2284) — no API
+      # key, no Claude CLI.
+      - name: Check the agent result-file contract
+        run: bash scripts/check_agent_contract.sh
+
       # The agent eval below needs ANTHROPIC_API_KEY; everything above does not.
       # When the secret is absent (a fork, or a repo that has not configured it),
       # skip the CLI install + eval instead of failing the whole pipeline — all the
