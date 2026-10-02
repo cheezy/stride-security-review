@@ -1,7 +1,7 @@
 {
   "name": "stride-security-review",
   "description": "AI-powered security review of code changes via /stride-security-review:security-review — diff or full-repo scans with framework rule packs for web, mobile and CI/CD. Emits SARIF with severity gating for CI, plus a considerations mode that checks a task's security_considerations were mitigated.",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "author": {
     "name": "Jeff Morgan",
     "email": "cheezy@letstango.ca"

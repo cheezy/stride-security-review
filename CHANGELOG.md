@@ -26,7 +26,7 @@ Why accepted rather than backfilled:
 
 The audit also found **zero** GitHub releases without a matching tag, so the record is incomplete in only this one direction.
 
-## [Unreleased]
+## [2.6.0] - 2026-10-02
 
 ### Added — the agent writes its full result to `SECURITY_RESULT_PATH` and returns at most 10 lines (W2284)
 
