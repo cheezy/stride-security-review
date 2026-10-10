@@ -59,8 +59,9 @@ jobs:
         run: bash scripts/run_transform_tests.sh
 
       # Text pins on the agent's SECURITY_RESULT_PATH contract (W2284), its
-      # considerations-mode rules (W2275) and its read-only tool contract
-      # (W2276) — no API key, no Claude CLI.
+      # considerations-mode rules (W2275), its read-only tool contract (W2276)
+      # and its one mode-tag spelling, with the tags the command sends and the
+      # skill's --considerations line (W2278) — no API key, no Claude CLI.
       - name: Check the agent contract
         run: bash scripts/check_agent_contract.sh
 

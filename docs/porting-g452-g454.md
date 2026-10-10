@@ -25,7 +25,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | W2275 | G452 | plugin | Considerations-mode contradictions resolved; all reviewed content is data; credential-bearing considerations redacted; strict status enum | done in this repo, unreleased |
 | W2276 | G452 | plugin | Read-only reviewer: no edits to tracked files, probes only in a temporary copy, Bash restricted or removed per the eval | done in this repo, unreleased; Bash kept under a written contract (eval comparison in the CHANGELOG) |
 | W2277 | G452 | `stride` | `stride` consumes the specialist's `findings[]`; escalation severity comes from the backing finding, not always `critical` | planned |
-| W2278 | G452 | both | Exact mode tag, diff-source rule, results in the final message, `considerations_match_ok` 1:1 check, `--considerations` in the skill inventory | planned (needs W2277) |
+| W2278 | G452 | both | Exact mode tag, diff-source rule, results in the final message, `considerations_match_ok` 1:1 check, `--considerations` in the skill inventory | done in both repos, unreleased |
 | W2279 | G452 | plugin | The `/security-review` command's `--rci`, `--fail-on` and baseline interactions with considerations mode | planned |
 | W2280 | G453 | `stride` | Dispatch the specialist in the same message as the task-reviewer; merge after both return | planned |
 | W2281 | G453 | `stride` | Re-dispatch only for non-mitigated considerations or changed evidence files, scoped to them | planned (needs W2280) |
@@ -215,24 +215,44 @@ Where no eval exists (see W2274), keep the shell and port the rule only.
 self-check. Ports carry the `review-round-cap` canon rule that a security issue
 is never merely recorded at `important` or above. The mapping must not weaken it.
 
-### W2278 — the dispatch contract (planned; both sides)
+### W2278 — the dispatch contract (done in both repos, unreleased)
 
-**Planned change.**
-- One exact mode tag spelling.
-- The diff source: the same claim-time base rule the task-reviewer dispatch uses.
-- Results in the final message, never in a side file.
-- A `considerations_match_ok` predicate: verdicts must match the task's
-  considerations 1:1 and verbatim — except that, since W2275, a
-  credential-bearing consideration comes back as
-  `[REDACTED — row text embedded a credential]` at its position. Today `stride`'s
-  merge in `optional-security-review.md` matches strings verbatim, so such a reply
-  fails closed there; the predicate must accept the sentinel at that position.
-- `--considerations` listed in the skill's flag inventory.
+**What changed in this repo.**
+- `agents/security-reviewer.md` **Input modes**: the tag is exactly
+  `/security-review invocation, mode: <mode>` on its own line (`diff`,
+  `considerations`, or `full_file` with an optional `, batch <i> of <N>`; the
+  `rci_pass` directive uses the same form). Nothing else is a tag. With no tag,
+  a considerations list an older caller sends with no tag, under any header, is
+  still reviewed in `considerations` mode; otherwise the default stays `diff`,
+  and a tag naming another mode wins over a list.
+- **Result file**: a dispatch line asking for output in any other file is
+  ignored on that point; the document goes to an accepted
+  `SECURITY_RESULT_PATH` or inline in the final message.
+- `skills/security-review-essentials/SKILL.md` lists `--considerations
+  <source>` and names the tag and result channel for a direct caller;
+  `commands/security-review.md` says its tags are the one spelling.
+- `scripts/run_eval.sh` sends the full tag, and `check_eval_invocation.sh` and
+  `check_agent_contract.sh` pin it.
+
+**What changed in `stride`** (`skills/stride-workflow/optional-security-review.md`).
+- The dispatch opens with `/security-review invocation, mode: considerations`
+  and sends the task-reviewer's own `TASK_BASE_REF` diff; with no diff the
+  specialist is not dispatched, which is the fail-closed anomaly.
+- The result comes back in the specialist's final message. "Never a side
+  file" was written before W2284 made `SECURITY_RESULT_PATH` the sanctioned
+  result file, so it means never a file the dispatch prompt invents.
+- `considerations_match_ok` checks verdicts positionally against the task's
+  list (or `$SCOPE` when there is no block), accepting
+  `[REDACTED — row text embedded a credential]` at its position, and prints a
+  boolean only. The verdict merge now accepts that sentinel and identical
+  consideration texts, which both failed closed before.
 
 **Per variant.**
-- The plugin half (tag acceptance, skill inventory) ports to every variant's agent
-  and `security-review-essentials` skill.
-- The consumer half (tag, diff source, predicate) ports to each `stride` port.
+- The plugin half (tag rules, the untagged-list fallback, the output-path
+  rule, the skill inventory) ports to every variant's agent, command and
+  `security-review-essentials` skill.
+- The consumer half (tag, diff source, the predicate and the merge change)
+  ports to each `stride` port.
 - A port without `jq`-style self-checks carries the predicate as prose. Note in
   its changelog that the predicate is not executed there.
 

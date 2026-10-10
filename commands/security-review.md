@@ -125,7 +125,7 @@ Then stop. This avoids burning an agent dispatch on a clean tree (or an empty/bi
 
 ### Step 4: Dispatch the security-reviewer agent
 
-Dispatch behavior depends on `FULL_MODE` from Step 1. In both modes every dispatch passes an input-mode tag at the top of the agent's prompt so the agent knows which methodology branch to apply (see `agents/security-reviewer.md` "Input modes"). The agent's output JSON schema is identical in both modes:
+Dispatch behavior depends on `FULL_MODE` from Step 1. In both modes every dispatch passes an input-mode tag at the top of the agent's prompt so the agent knows which methodology branch to apply (see `agents/security-reviewer.md` "Input modes"). Send each tag exactly as written below — `/security-review invocation, mode: <mode>` is the agent's one accepted spelling, so never shorten or reword it. The agent's output JSON schema is identical in both modes:
 
 ```json
 {

@@ -109,7 +109,7 @@ check "a logged-in CLI is accepted without a key" contains "$TMP/fake.out" "# au
 check "the CLI received --agent $AGENT_ID"      grep -qxF -- "$AGENT_ID" "$TMP/rec/argv"
 check "the CLI received --plugin-dir"           grep -qxF -- "--plugin-dir" "$TMP/rec/argv"
 check "the CLI ran outside the repo"            test "$(cat "$TMP/rec/pwd" 2>/dev/null)" != "$ROOT_DIR"
-check "the prompt is in considerations mode"    contains "$TMP/rec/stdin" "mode: considerations"
+check "the prompt is in considerations mode"    contains "$TMP/rec/stdin" "/security-review invocation, mode: considerations"
 check "the key-free run never printed a key"    lacks "$TMP/fake.out" "ANTHROPIC_API_KEY="
 
 # --- 3. no key and no login refuses -----------------------------------------

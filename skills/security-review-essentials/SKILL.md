@@ -107,6 +107,7 @@ The command's current flag surface, one line per flag — parsing and full seman
 - `--patches` — emit a surgical-fix diff alongside each finding.
 - `--base <ref>` — diff against `<ref>...HEAD` instead of HEAD (PR workflows pass the target branch).
 - `--fail-on <severity>` — exit non-zero when findings reach the threshold; this is the CI security gate that blocks merges.
+- `--considerations <source>` — verify that a task's security considerations (a file with one per non-empty line, or a single inline string) are mitigated by the diff, adding one mitigated/partial/unmitigated verdict per consideration; diff mode only, ignored under `--full`.
 
 Two further customization knobs:
 
@@ -115,7 +116,7 @@ Two further customization knobs:
 
 ## Composing with other workflows
 
-The `--json` flag makes the command pipeable. Other plugins (e.g., a Stride completion hook that wants to gate task completion on a clean review) can dispatch `/stride-security-review:security-review --json`, parse the result, and decide whether to block. The agent does not call out to any external service, so this composition is safe for sensitive repos.
+The `--json` flag makes the command pipeable. Other plugins (e.g., a Stride completion hook that wants to gate task completion on a clean review) can dispatch `/stride-security-review:security-review --json`, parse the result, and decide whether to block. The agent does not call out to any external service, so this composition is safe for sensitive repos. A workflow that dispatches the agent directly, as Stride's deep security review does, opens its prompt with the agent's one mode tag, `/security-review invocation, mode: <mode>`, and reads the result from the agent's final message or the `SECURITY_RESULT_PATH` it supplied, never from any other file.
 
 ## What this skill does NOT cover
 

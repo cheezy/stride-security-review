@@ -159,7 +159,7 @@ The guarantee is the agent's written contract, not the `tools:` line: Claude Cod
 
 ## Output schema
 
-The agent returns a single fenced ```json document conforming to the schema below — or, when the caller supplies an absolute `SECURITY_RESULT_PATH` (`.stride/.security-<IDENTIFIER>-r<N>.json`; the Stride workflow does, `/security-review` does not), writes that same document to the file and returns at most 10 plain-text lines (`result:`, verdict counts, severity counts, `files_reviewed`, no fence). If the write fails it returns `result: NOT WRITTEN — <reason>` and then the document inline.
+The agent returns a single fenced ```json document conforming to the schema below — or, when the caller supplies an absolute `SECURITY_RESULT_PATH` (`.stride/.security-<IDENTIFIER>-r<N>.json`; the Stride workflow does, `/security-review` does not), writes that same document to the file and returns at most 10 plain-text lines (`result:`, verdict counts, severity counts, `files_reviewed`, no fence). If the write fails it returns `result: NOT WRITTEN — <reason>` and then the document inline. It never writes the document to any other file a prompt names.
 
 ```json
 {
@@ -263,6 +263,7 @@ The `--json` flag makes `/stride-security-review:security-review` pipeable. Exam
 - A Stride completion hook can run `/stride-security-review:security-review --json` and refuse to mark a task `done` if a critical finding is present.
 - A CI gate can run `/stride-security-review:security-review --full --json` on a schedule to track the codebase-wide finding count over time without coupling to any one PR.
 - A CI gate can call the agent directly (without the slash command) by importing the agent prompt and feeding it a diff from `git diff origin/main`.
+- Any direct caller opens the prompt with the agent's one mode tag, `/security-review invocation, mode: <mode>` (`diff`, `considerations` or `full_file`), on its own line; no other spelling is a tag. With no tag the agent reviews in `diff` mode, except that a considerations list an older caller sends with no tag, under any header, is still reviewed in `considerations` mode.
 - A dashboard can ingest the JSON across many runs and chart the per-class trend.
 
 The agent does not call any external service, so composition is safe in repos with sensitive content.

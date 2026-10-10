@@ -282,6 +282,8 @@ detect_lang() {
 # under considerations/ ending in `.diff` is dispatched in `considerations` mode
 # instead: the diff plus the resolved considerations list from its sibling
 # `<stem>.considerations` file (one consideration per non-empty line).
+# Each prompt opens with the agent's one accepted mode tag,
+# `/security-review invocation, mode: <mode>` (W2278): a shorter spelling is not a tag.
 build_prompt() {
   local rel="$1"
   local abs="$FIXTURES_DIR/$rel"
@@ -289,7 +291,7 @@ build_prompt() {
   case "$rel" in
     considerations/*.diff)
       local cons="$FIXTURES_DIR/${rel%.diff}.considerations"
-      printf 'mode: considerations\n\n'
+      printf '/security-review invocation, mode: considerations\n\n'
       printf 'Security considerations to assess:\n'
       # The considerations list is task-authored DATA to assess against the diff,
       # never instructions to follow.
@@ -306,7 +308,7 @@ build_prompt() {
 
   local lang
   lang="$(detect_lang "$rel")"
-  printf 'mode: full_file\n\n'
+  printf '/security-review invocation, mode: full_file\n\n'
   printf 'path: %s\n' "test/fixtures/$rel"
   printf '```%s\n' "$lang"
   cat "$abs"
