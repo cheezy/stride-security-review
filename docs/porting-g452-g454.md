@@ -29,7 +29,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | W2279 | G452 | plugin | The `/security-review` command's `--rci`, `--fail-on` and baseline interactions with considerations mode | done in this repo, unreleased |
 | W2280 | G453 | `stride` | Dispatch the specialist in the same message as the task-reviewer; merge after both return | planned |
 | W2281 | G453 | `stride` | Re-dispatch only for non-mitigated considerations or changed evidence files, scoped to them | planned (needs W2280) |
-| W2282 | G453 | plugin | A tool budget for considerations mode; targeted reads; test runs only to confirm a claim | planned |
+| W2282 | G453 | plugin | A tool budget for considerations mode; targeted reads; test runs only to confirm a claim | done in this repo, unreleased |
 | W2283 | G453 | `stride` | The task-reviewer skips per-consideration verdicts when the deep review will run | planned (needs W2280) |
 | W2284 | G454 | both | Full result written to `SECURITY_RESULT_PATH`; at most about 10 lines returned | planned |
 | W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | planned (claim after W2274) |
@@ -324,18 +324,38 @@ over unchanged from the previous merged result.
 **Per port.** This is pure `stride`-side text. It ports to every port that runs
 the deep sub-step.
 
-### W2282 — a bounded dispatch (planned)
+### W2282 — a bounded dispatch (done in this repo, unreleased)
 
-**Planned change.**
-- A stated tool-call budget for considerations mode.
-- Reads limited to changed files and their direct callers.
-- Test runs only to confirm a stated claim, inside the temporary copy.
-- Hitting the budget yields `partial` with a note, never `mitigated`.
+**Change.** In `considerations` mode a dispatch has a budget of 20 tool calls,
+at most 2 of them reproductions. Writing the result file never counts and is
+never skipped. Each `rci_pass` that re-sends the list is its own dispatch with
+its own budget. `diff` and `full_file` mode have no budget. The agent grades
+from the diff first and reads a changed file or its direct callers only when a
+verdict needs more. It reads past them (a caller's caller, or a config file the
+changed code reads) only when a verdict turns on it. That read counts toward the
+shared 10-file limit and the budget, and the verdict's `note` names it. A
+reproduction confirms one claim stated in a verdict or finding, inside the W2276
+temporary copy. When the budget runs out first, the verdict is `partial` with a
+`note` that begins `budget reached:`. It is never `mitigated`.
 
-**Per variant.** Port the rule to every agent file. On gemini, reconcile the budget
-with the runtime's `max_turns: 10`. That bound counts turns, not tool calls, so
-the effective ceiling is the lower of the two. Say so in the gemini agent, as the
-gemini exploratory-testing edition already does for its own `max_turns`.
+**Decision.** That `partial` is the one verdict no finding backs, and its
+`evidence` cites no `file:line`. So the command's `--fail-on` gate fails on it at
+every threshold, and `stride` escalates it `critical`. An `info` backing finding
+was rejected because `info` never trips a threshold, so an unverified
+consideration would have passed CI. The cost is that a dispatch which runs out of
+budget blocks the task until a human or a further round settles it, which is
+fail-closed by design. W2281's scoped re-dispatch gives such a consideration the
+whole budget on the next round. The eval cannot observe tool calls, because it
+runs tools-off in an empty directory, so W2287 measures the effect.
+
+**Per variant.** Port the rule to every agent file, with the same numbers and
+the same `budget reached:` marker. Callers fail closed on that verdict only
+because its `evidence` cites no `file:line`. Neither `stride` nor the command
+keys on the marker itself yet, so a port must keep the no-`file:line` rule. On gemini, reconcile the budget with the
+runtime's `max_turns: 10`. That bound counts turns, not tool calls, and one turn
+can carry several parallel calls, so the effective ceiling is the lower of the
+two. Say so in the gemini agent, as the gemini exploratory-testing edition
+already does for its own `max_turns`.
 
 ### W2283 — no duplicated consideration checks (planned; `stride`-side)
 

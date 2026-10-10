@@ -164,6 +164,15 @@ main() {
   echo '{"findings":[{"severity":"low","file":"a.py","line":16,"vulnerability_class":"x","description":"d"}],"consideration_verdicts":[{"consideration":"c","status":"partial","evidence":"see note","note":"n"}]}' > "$tmp/v_part_unbacked.json"
   assert_eq "failon: partial that no finding backs fails closed" "1" "$(bash "$XFORM" failon high "$tmp/v_part_unbacked.json" 1 || true)"
 
+  # W2282: a partial the considerations-mode tool budget left unverified carries
+  # a `budget reached:` note and evidence with no file:line, and no finding backs
+  # it — so it trips even the loosest threshold, with no findings or with an
+  # unrelated info finding beside it.
+  echo '{"findings":[],"consideration_verdicts":[{"consideration":"c","status":"partial","evidence":"not verified within the tool budget","note":"budget reached: the session store config was not read"}]}' > "$tmp/v_budget.json"
+  assert_eq "failon: a budget-reached partial with no findings trips --fail-on critical" "1" "$(exit_of bash "$XFORM" failon critical "$tmp/v_budget.json" 1)"
+  echo '{"findings":[{"severity":"info","file":"a.py","line":16,"vulnerability_class":"x","description":"d"}],"consideration_verdicts":[{"consideration":"c","status":"partial","evidence":"not verified within the tool budget","note":"budget reached: the caller of a.py was not read"}]}' > "$tmp/v_budget_info.json"
+  assert_eq "failon: an info finding beside a budget-reached partial does not back it" "1" "$(bash "$XFORM" failon critical "$tmp/v_budget_info.json" 1 || true)"
+
   echo '{"findings":[]}' > "$tmp/v_missing.json"
   assert_eq "failon: missing verdicts in considerations mode fail closed" "1" "$(bash "$XFORM" failon critical "$tmp/v_missing.json" 1 || true)"
   echo '{"findings":[],"consideration_verdicts":[]}' > "$tmp/v_short.json"

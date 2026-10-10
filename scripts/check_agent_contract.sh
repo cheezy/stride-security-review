@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Text pins on agents/security-reviewer.md's SECURITY_RESULT_PATH contract (W2284),
 # its considerations-mode rules (W2275), its read-only tool contract (W2276) and
-# its one mode-tag spelling (W2278), plus the tag and flag in the command and skill.
+# its one mode-tag spelling (W2278) and its considerations-mode tool budget
+# (W2282), plus the tag and flag in the command and skill.
 # The agent's behaviour is a prose contract read by a model, so the cheapest
 # regression guard is that the load-bearing sentences are still there. Each
 # needle is a fixed string; a reworded rule must update its pin deliberately.
@@ -109,6 +110,24 @@ pin "evidence links a verdict to its finding" 'which is how the caller links the
 pin_in "$COMMAND" "every rci pass re-sends the directives"  'The same directives Step 4 sent for this input, in the same order and verbatim, on every pass.'
 pin_in "$COMMAND" "an unmitigated verdict trips the gate"    'An `unmitigated` verdict trips the gate at every threshold'
 pin_in "$COMMAND" "baseline keeps backing findings"          'Baseline suppression never drops a finding that backs a verdict'
+
+# W2282: a considerations-mode tool budget, justified wider reads, claim-bound
+# reproductions, and the one unbacked partial a reached budget yields. The
+# command names that partial where it gates an unbacked one.
+pin "considerations mode has a tool budget"  '**In `considerations` mode, a dispatch has a tool budget: at most 20 tool calls, of which at most 2 are reproductions.**'
+pin "the result-file write never counts"     'except the result-file write, which never counts and is never skipped'
+pin "each rci pass has its own budget"       'is its own dispatch with its own budget'
+pin "no budget in diff or full_file"         'The budget never applies in `diff` or `full_file` mode.'
+pin "the diff costs nothing"                 'The diff you were given costs nothing'
+pin "the read limit names the exception"     'except that in `considerations` mode only, the tool budget below allows a read past them'
+pin "a wider read is justified and counted"  'is allowed only when a verdict turns on it; it counts toward both the 10-file read limit and the budget'
+pin "a reproduction confirms a stated claim" 'A reproduction confirms one specific claim you state in a verdict'"'"'s `note` or a finding'"'"'s `description`'
+pin "budget reached is partial with a note"  'grade it `partial` with a `note` that begins `budget reached:`'
+pin "never mitigated, not even no-surface"   'never `mitigated`, not even the no-surface `mitigated`'
+pin "the budget partial is unbacked"         'Such a verdict is the one `partial` no finding backs'
+pin "the verdict rules name the exception"   '**The one unbacked `partial` — a budget reached.**'
+pin "an info backing would pass the gate"    'an `info` one would let the `--fail-on` gate pass an unverified consideration'
+pin_in "$COMMAND" "the command gates a budget partial"      'a `partial` whose `note` begins `budget reached:`'
 
 # The frontmatter tools line must be the set the rule names (W2276).
 tools_line="$(awk 'NR == 1 && /^---$/ { f = 1; next } f && /^---$/ { exit } f && /^tools:/' "$AGENT")"
