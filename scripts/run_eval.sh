@@ -25,9 +25,12 @@
 # `--plugin-dir <repo root>` loads the plugin from the checkout (it overrides an
 # installed plugin of the same name) and `--agent
 # stride-security-review:security-reviewer` makes that agent the session agent.
-# Each call runs from an empty scratch directory with every tool disabled and no
-# MCP servers, so the agent judges only the prompt (which carries the whole file
-# or diff) and can neither read EXPECTED.md's answers nor edit the repo.
+# Each call runs from an empty scratch directory and, by default, with every
+# tool disabled and no MCP servers, so the agent judges only the prompt (which
+# carries the whole file or diff) and can neither read EXPECTED.md's answers nor
+# edit the repo. EVAL_TOOLS, EVAL_ALLOWED_TOOLS and EVAL_DISALLOWED_TOOLS exist
+# to compare tool configurations (W2276 ran it with and without Bash); point
+# EVAL_PLUGIN_DIR at a copy without test/ when you enable tools.
 #
 # Usage:
 #   bash scripts/run_eval.sh                            # all fixtures
@@ -51,6 +54,16 @@
 #   EVAL_PLUGIN_DIR     plugin directory to load (default: this repo's root)
 #   EVAL_AGENT          agent to run (default: stride-security-review:security-reviewer)
 #   EVAL_TOOLS          value for claude --tools (default: empty = no tools)
+#   EVAL_ALLOWED_TOOLS  tools that may run without a permission prompt (default:
+#                       empty). When set, the run passes --allowedTools with it
+#                       and --setting-sources '' so the operator's own settings,
+#                       allow-list and hooks stay out of the comparison. With
+#                       Bash in the list every shell command the agent issues
+#                       runs unprompted, and your own deny rules and sandbox
+#                       settings are not loaded: use it only on first-party
+#                       fixtures, with EVAL_PLUGIN_DIR pointing at a copy.
+#   EVAL_DISALLOWED_TOOLS  value for claude --disallowedTools (default: Read Grep
+#                       Glob Bash Edit Write NotebookEdit WebFetch WebSearch)
 #   FIXTURES_DIR        default: test/fixtures
 #   LOG_DIR             default: logs
 #
@@ -77,7 +90,11 @@ AGENT="${EVAL_AGENT:-stride-security-review:security-reviewer}"
 TOOLS="${EVAL_TOOLS-}"
 # Belt and braces with --tools "": deny the file and shell tools by name too, so
 # the agent can never read the expected answers in EXPECTED.md or edit the repo.
-DISALLOWED_TOOLS="Read Grep Glob Bash Edit Write NotebookEdit WebFetch WebSearch"
+# `-` not `:-` for both, as for EVAL_TOOLS: an explicitly empty value is kept.
+DISALLOWED_TOOLS="${EVAL_DISALLOWED_TOOLS-Read Grep Glob Bash Edit Write NotebookEdit WebFetch WebSearch}"
+# Empty by default. In `claude -p` a tool that needs permission (Bash) is denied
+# unless allowed, so a with-Bash comparison sets this (W2276).
+ALLOWED_TOOLS="${EVAL_ALLOWED_TOOLS-}"
 
 VERBOSE=0
 DRY_RUN=0
@@ -129,7 +146,9 @@ detect_auth() {
 # build_claude_argv
 # Fills CLAUDE_ARGV with the exact command each fixture is dispatched with: the
 # working tree's plugin via --plugin-dir, its security-reviewer as the session
-# agent, no tools, no MCP servers, no session persisted.
+# agent, no tools (unless EVAL_TOOLS says otherwise), no MCP servers, no session
+# persisted. With EVAL_ALLOWED_TOOLS set it adds --allowedTools and
+# --setting-sources '' (never a permission bypass).
 build_claude_argv() {
   CLAUDE_ARGV=(
     "$CLAUDE_CLI" -p
@@ -137,6 +156,11 @@ build_claude_argv() {
     --agent "$AGENT"
     --tools "$TOOLS"
     --disallowedTools "$DISALLOWED_TOOLS"
+  )
+  if [ -n "$ALLOWED_TOOLS" ]; then
+    CLAUDE_ARGV+=(--allowedTools "$ALLOWED_TOOLS" --setting-sources '')
+  fi
+  CLAUDE_ARGV+=(
     --strict-mcp-config
     --no-session-persistence
     --output-format text

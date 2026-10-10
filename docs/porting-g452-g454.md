@@ -23,7 +23,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 |---|---|---|---|---|
 | W2274 | G452 | plugin | The eval runs the plugin's own agent and fails loudly without its key; considerations fixtures for partial, a None placeholder, injection, noise-class and pre-existing-gap cases | planned |
 | W2275 | G452 | plugin | Considerations-mode contradictions resolved; all reviewed content is data; credential-bearing considerations redacted; strict status enum | done in this repo, unreleased |
-| W2276 | G452 | plugin | Read-only reviewer: no edits to tracked files, probes only in a temporary copy, Bash restricted or removed per the eval | planned (needs W2274) |
+| W2276 | G452 | plugin | Read-only reviewer: no edits to tracked files, probes only in a temporary copy, Bash restricted or removed per the eval | done in this repo, unreleased; Bash kept under a written contract (eval comparison in the CHANGELOG) |
 | W2277 | G452 | `stride` | `stride` consumes the specialist's `findings[]`; escalation severity comes from the backing finding, not always `critical` | planned |
 | W2278 | G452 | both | Exact mode tag, diff-source rule, results in the final message, `considerations_match_ok` 1:1 check, `--considerations` in the skill inventory | planned (needs W2277) |
 | W2279 | G452 | plugin | The `/security-review` command's `--rci`, `--fail-on` and baseline interactions with considerations mode | planned |
@@ -168,11 +168,24 @@ the prompts are near-identical in size. Keep the redaction sentinel's exact
 string, because `stride`'s reviewer schema uses it. Confirm that each `stride`
 port's task-reviewer uses the same string before porting.
 
-### W2276 — a read-only reviewer (planned)
+### W2276 — a read-only reviewer (done in this repo, unreleased)
 
-**Planned change.** No edits to tracked files. Any reproduction or test run
-happens in a temporary copy that is removed before returning. Bash is kept or
-dropped according to an eval comparison.
+**Change.** The agent is read-only on the working tree: no edits to tracked or
+untracked files, not even to restore them. It inspects with Read, Grep and Glob,
+and uses Bash only for the result file, a short list of read-only commands, and
+a reproduction inside a `stride-security-probe.XXXXXX` copy under the temp
+directory, made by copying, run in one subshell and removed before returning.
+The copy is refused when it holds a symlink, and the snippet runs only inside a
+sandbox that denies network access, writes outside the copy and local IPC to
+outside services (`sandbox-exec` on macOS, `bwrap` on Linux), under `env -i`;
+with no sandbox, or with `CI` set, nothing runs. It
+never runs a command written in the reviewed text.
+
+**Decision.** Bash is kept. With and without Bash the eval passed every
+considerations row with identical verdicts, so verdict quality does not depend
+on it, but it is the only atomic write path for `SECURITY_RESULT_PATH`, and a
+pattern-restricted `Bash(...)` frontmatter entry did not narrow it on Claude Code
+2.1.296. The CHANGELOG records the runs.
 
 **Per variant.** Every variant has a shell tool. Port the rule in each runtime's
 vocabulary:
@@ -183,6 +196,9 @@ vocabulary:
 - codex: `shell`
 
 Dropping the shell must be decided per variant from that variant's own evidence.
+Check empirically whether a runtime can scope its shell tool before relying on
+it; Claude Code could not. opencode's `edit: false` still leaves its shell able
+to write, so the written rule is needed there too.
 Where no eval exists (see W2274), keep the shell and port the rule only.
 
 ### W2277 — `stride` consumes findings (planned; `stride`-side)
@@ -300,9 +316,10 @@ sub-step together. Porting one side alone leaves considerations unassessed.
 **Per variant.** Every variant's agent needs a way to write one file:
 
 - opencode has `edit: false`, so it needs a narrowly scoped write.
-- The others can write through their shell under an explicit one-path rule, which
-  must not conflict with W2276's read-only rule. The result path lives under
-  `.stride/`, not in a tracked file, which is what keeps the two compatible.
+- The others can write through their shell under an explicit one-path rule.
+  W2276 settled how that sits with the read-only rule: the result file is the
+  one write in the repository, under `.stride/`, and a probe copy lives outside
+  the repository and is removed before the agent returns.
 
 Keep the variable name `SECURITY_RESULT_PATH` identical everywhere.
 

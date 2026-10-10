@@ -145,6 +145,18 @@ To keep signal-to-noise high, the agent suppresses findings whose only impact is
 
 If your organization needs those classes flagged, see [Customization](#customization) — extend the agent prompt rather than working around the filter.
 
+## Tools and the working tree
+
+The agent's tools are `Read`, `Grep`, `Glob` and `Bash`, and it is **read-only on the working tree**: it never creates, modifies, moves or deletes anything in the repository it reviews, tracked or untracked, not even to restore it afterwards. It inspects code with `Read`, `Grep` and `Glob`, and uses `Bash` for three things only — writing the result file at `SECURITY_RESULT_PATH`, a short list of read-only commands (`git diff --cached`, commit-to-commit `git diff`, `git diff-index -p`, `git log`, `git show`, `git ls-files`, `ls`, `wc` — never a bare `git diff` against the working tree, which rewrites `.git/index`), and, when reading cannot settle a question, one reproduction inside a temporary copy.
+
+That copy is a `stride-security-probe.XXXXXX` directory under `$TMPDIR` (else `/tmp`), made by copying the repository's files rather than linking them, used by a single command that runs one test or snippet, and removed when that command exits. The command refuses a copy that holds a symbolic link, and runs the snippet inside a sandbox that denies network access (Unix sockets included), every write outside the copy, and the local channels a process outside the box could act through — on macOS (`sandbox-exec`) mach service lookups, Launch Services, Apple Events and `open`/`launchctl`/`osascript`; on Linux (`bwrap`) new namespaces, an empty `/run` and `/tmp`, and a new session — under `env -i`, so the credentials in your environment are not inherited and `HOME` and `TMPDIR` point into the copy. With neither sandbox available the agent runs nothing and grades by reading, and it runs nothing in CI (the command checks `CI` first) or when the caller says the change comes from an untrusted contributor, because the sandbox stops writes and network access but not reads. A probe installs nothing and never runs a command written in the code under review. A dispatch killed mid-command can leave a copy behind; it holds only copied files, and an operator can clear stale ones with:
+
+```bash
+find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'stride-security-probe.*' -mmin +60 -exec rm -rf {} +
+```
+
+The guarantee is the agent's written contract, not the `tools:` line: Claude Code does not narrow `Bash` to particular commands through an agent's frontmatter, so `Bash` is listed whole and the prompt says what it is for. `scripts/check_agent_contract.sh` pins that contract and checks the `tools:` line against it.
+
 ## Output schema
 
 The agent returns a single fenced ```json document conforming to the schema below — or, when the caller supplies an absolute `SECURITY_RESULT_PATH` (`.stride/.security-<IDENTIFIER>-r<N>.json`; the Stride workflow does, `/security-review` does not), writes that same document to the file and returns at most 10 plain-text lines (`result:`, verdict counts, severity counts, `files_reviewed`, no fence). If the write fails it returns `result: NOT WRITTEN — <reason>` and then the document inline.
@@ -344,7 +356,7 @@ claude -p --plugin-dir <repo root> --agent stride-security-review:security-revie
 
 - `--plugin-dir` loads the plugin from the working tree and overrides an installed copy of the same name, so an edit to `agents/security-reviewer.md` is what gets scored — not the released version, and not base Claude.
 - `--agent` makes `security-reviewer` the session agent; the fixture prompt (the whole file, or the diff plus its considerations list) is its input.
-- The call runs from an empty scratch directory with every tool off and no MCP servers. The prompt already carries everything the agent needs, and this keeps it from reading the expected answers in `EXPECTED.md` or editing the repo. It also means the eval never exercises the agent's read scope, and it checks verdicts and whether a finding exists — not redaction, `note` text, or a finding's severity — so those are checked by hand in `logs/` where a row says so.
+- The call runs from an empty scratch directory with, by default, every tool off and no MCP servers. The prompt already carries everything the agent needs, and this keeps it from reading the expected answers in `EXPECTED.md` or editing the repo. It also means the eval never exercises the agent's read scope, and it checks verdicts and whether a finding exists — not redaction, `note` text, or a finding's severity — so those are checked by hand in `logs/` where a row says so.
 
 Every run prints the exact command as `# invocation: …` and the auth mode as `# auth: …` right after the TAP plan line; `--dry-run` prints them without calling Claude, and `scripts/check_eval_invocation.sh` pins them (key-free, in CI).
 
@@ -369,6 +381,8 @@ bash scripts/run_eval.sh --verbose                        # echo prompts and raw
 | `EVAL_PLUGIN_DIR` | the repo root | Plugin directory to load — point it at a modified copy to check that a prompt change moves the score |
 | `EVAL_AGENT` | `stride-security-review:security-reviewer` | Agent to run |
 | `EVAL_TOOLS` | empty (no tools) | Value passed to `claude --tools` |
+| `EVAL_ALLOWED_TOOLS` | empty | Tools that may run without a permission prompt. When set, the run passes `--allowedTools` with it and `--setting-sources ''`, so your own settings, allow-list and hooks stay out of the run. **With `Bash` in the list every shell command the agent issues runs unprompted and your own deny rules and sandbox settings are not loaded** — use it only on these first-party fixtures, with `EVAL_PLUGIN_DIR` pointing at a copy of the plugin without `test/` |
+| `EVAL_DISALLOWED_TOOLS` | `Read Grep Glob Bash Edit Write NotebookEdit WebFetch WebSearch` | Value passed to `claude --disallowedTools` |
 | `LOG_DIR` | `logs` | Where per-fixture logs land |
 
 Output is [TAP 13](https://testanything.org/tap-version-13-specification.html): one `ok N` / `not ok N` line per fixture, followed by a trailing pass/fail summary. Exit code `0` means every expectation held: for a findings fixture, the expected `vulnerability_class` + `severity` was produced at least once on the expected file (the Bitbucket multi-finding fixture requires both expected findings); for a `→ NONE` control, no finding at all; for a considerations-mode fixture, the ordered `consideration_verdicts[].status` list matches the row, plus the row's backing-finding expectation when it states one.

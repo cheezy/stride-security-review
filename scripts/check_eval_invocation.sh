@@ -12,6 +12,10 @@
 #      considerations-mode prompt on stdin. A canned verdict scores `ok`.
 #   3. With no ANTHROPIC_API_KEY and a CLI that is not logged in, the run
 #      refuses with exit 2 instead of silently scoring nothing.
+#   1b. The tool overrides (W2276): by default the run denies the file and
+#      shell tools and allows nothing; with EVAL_TOOLS, EVAL_ALLOWED_TOOLS and
+#      EVAL_DISALLOWED_TOOLS set, the argv carries exactly those lists plus
+#      --setting-sources '', and never a permission bypass.
 #   4. The CI gate in .github/workflows/eval.yml: its "Detect
 #      ANTHROPIC_API_KEY" run script, extracted and executed with an empty key,
 #      skips (exit 0, present=false) on pull_request — fork and Dependabot PRs
@@ -55,6 +59,24 @@ check "the invocation selects the plugin agent" contains "$TMP/dry.inv" "--agent
 check "the invocation turns tools off"          contains "$TMP/dry.inv" "--tools ''"
 check "the invocation is not a bare claude -p"  lacks "$TMP/dry.inv" "claude -p --output-format"
 check "dry-run reports its auth mode"           contains "$TMP/dry.out" "# auth: dry-run"
+check "the default denies the file and shell tools" contains "$TMP/dry.inv" \
+  "--disallowedTools $(printf '%q' 'Read Grep Glob Bash Edit Write NotebookEdit WebFetch WebSearch')"
+check "the default allows nothing"              lacks "$TMP/dry.inv" "--allowedTools"
+check "the default keeps setting sources"       lacks "$TMP/dry.inv" "--setting-sources"
+
+# --- 1b. the tool overrides used for the with/without-Bash comparison -------
+EVAL_TOOLS='Read,Grep,Glob,Bash' EVAL_ALLOWED_TOOLS='Read,Grep,Glob,Bash' \
+  EVAL_DISALLOWED_TOOLS='Edit Write NotebookEdit WebFetch WebSearch' \
+  LOG_DIR="$TMP/override-logs" bash "$RUN_EVAL" --dry-run --fixture "$FIXTURE" > "$TMP/override.out" 2>/dev/null
+grep '^# invocation:' "$TMP/override.out" > "$TMP/override.inv" || true
+
+check "the override sets --tools"               contains "$TMP/override.inv" "--tools Read\,Grep\,Glob\,Bash"
+check "the override sets --allowedTools"        contains "$TMP/override.inv" "--allowedTools Read\,Grep\,Glob\,Bash"
+check "the override drops the operator settings" contains "$TMP/override.inv" "--setting-sources ''"
+check "the override sets the deny list"         contains "$TMP/override.inv" \
+  "--disallowedTools $(printf '%q' 'Edit Write NotebookEdit WebFetch WebSearch')"
+check "the override never bypasses permissions" lacks "$TMP/override.inv" "dangerously"
+check "the override never sets a permission mode" lacks "$TMP/override.inv" "--permission-mode"
 
 # --- 2. a fake CLI records what was really executed -------------------------
 FAKE="$TMP/fake-claude"
