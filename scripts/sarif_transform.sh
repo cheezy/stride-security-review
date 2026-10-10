@@ -18,7 +18,11 @@
 #   sarif_transform.sh fingerprint <findings.json>   # one lowercase hex hash per finding, in order
 #   sarif_transform.sh dedup       <findings.json>   # order-stable dedup by (file,line,vulnerability_class)
 #   sarif_transform.sh sarif       <findings.json>   # SARIF v2.1.0 document
-#   sarif_transform.sh failon <severity> <findings.json>  # prints N_GATE; exit 1 if >0, else 0
+#   sarif_transform.sh failon <severity> <findings.json> [<n_considerations>]
+#                                                    # prints N_GATE; exit 1 if >0, else 0
+#   sarif_transform.sh suppress <baseline.json> <findings.json> [<n_considerations>]
+#                                                    # Step 4.6 document with acknowledged,
+#                                                    # non-backing findings dropped
 #
 # Input shape is the agent's native findings document: {"findings":[ {finding}, ... ], ...}.
 #
@@ -26,7 +30,13 @@
 #   - Step 4.6  fingerprint = SHA256(vulnerability_class|file|line|first_80_chars_of_description), lowercase hex
 #   - Step 4b   dedup merge rule: order-stable, first-occurrence-wins, key (file,line,vulnerability_class)
 #   - Step 5    SARIF v2.1.0 mapping (severity->level/security-severity, tags, partialFingerprints)
-#   - Step 6    fail-on threshold: critical>high>medium>low>info; info never trips a threshold
+#   - Step 4    a finding that backs a verdict: file equal and line inside a path:line or
+#               path:start-end reference in an open (partial/unmitigated) verdict's evidence;
+#               an open verdict nothing backs, or missing/short/malformed verdicts, protect all
+#   - Step 4.6  baseline suppression never drops a finding that backs a verdict
+#   - Step 6    fail-on threshold: critical>high>medium>low>info; info never trips a threshold;
+#               an unmitigated verdict, an unbacked partial verdict and missing or malformed
+#               verdicts each trip the gate at every threshold (fail closed)
 
 set -euo pipefail
 
@@ -117,26 +127,116 @@ rank() {
   esac
 }
 
+# VERDICT_JQ — the Step 4 "a finding that backs a verdict" definition, shared by
+# failon and suppress. $n is the resolved consideration count, or null when the
+# caller did not say (then only the verdicts actually present are checked).
+#   refs($v)       every [path, start, end] reference in the verdict's evidence
+#   backs($f; $v)  the finding's file equals a reference path and its line is in range
+#   verdicts       the consideration_verdicts array, or [] when it is not an array
+#   open           the partial and unmitigated entries
+#   bad_status     entries that are not objects or whose status is outside the enum
+#   malformed      1 when the array is missing/short/not an array (with $n), or
+#                  present but not an array (without $n); else 0
+#   unbacked($v)   true when no finding backs the open verdict $v
+VERDICT_JQ='
+  def refs($v):
+    [ (($v.evidence // "") | tostring)
+      | scan("([^\\s,;:`()]+):([0-9]+)(?:-([0-9]+))?")
+      | [ .[0], (.[1] | tonumber), ((.[2] // .[1]) | tonumber) ] ];
+  def backs($f; $v):
+    ($f.line | type) == "number"
+    and any(refs($v)[]; .[0] == (($f.file // "") | tostring)
+                        and $f.line >= .[1] and $f.line <= .[2]);
+  def verdicts:
+    if (.consideration_verdicts | type) == "array" then .consideration_verdicts else [] end;
+  def vstatus: if type == "object" then .status else null end;
+  def open: [ verdicts[] | select(vstatus == "partial" or vstatus == "unmitigated") ];
+  def bad_status:
+    [ verdicts[] | select((vstatus == "mitigated" or vstatus == "partial"
+                           or vstatus == "unmitigated") | not) ];
+  def malformed:
+    if $n != null then
+      (if (.consideration_verdicts | type) != "array"
+          or (.consideration_verdicts | length) != $n then 1 else 0 end)
+    else
+      (if has("consideration_verdicts")
+          and (.consideration_verdicts | type) != "array" then 1 else 0 end)
+    end;
+  def unbacked($v): . as $doc | ([ ($doc.findings // [])[] | select(backs(.; $v)) ] | length) == 0;
+'
+
+# check_n <value> — the optional n_considerations argument must be an integer >= 1.
+check_n() {
+  case "$1" in
+    ''|*[!0-9]*) die "n_considerations must be an integer of at least 1 (got: $1)" ;;
+  esac
+  [ "$1" -ge 1 ] || die "n_considerations must be an integer of at least 1 (got: $1)"
+}
+
 cmd_failon() {
-  local threshold="$1" input="$2"
+  local threshold="$1" input="$2" n="${3:-null}"
   case "$threshold" in
     critical|high|medium|low) ;;
     *) die "--fail-on requires one of: critical, high, medium, low (got: $threshold)" ;;
   esac
+  [ "$n" = null ] || check_n "$n"
   local tr
   tr=$(rank "$threshold")
   local count
-  count=$(jq --argjson tr "$tr" '
-    [ (.findings // [])[]
-      | .severity
-      | (if . == "critical" then 4 elif . == "high" then 3 elif . == "medium" then 2
-          elif . == "low" then 1 else 0 end)
-      | select(. >= $tr)
-    ] | length
+  # N_GATE = findings at/above the threshold + verdicts that trip the gate. With no
+  # consideration_verdicts key and no n the verdict terms are all 0, so the count
+  # is exactly the severity-only count of earlier releases.
+  count=$(jq --argjson tr "$tr" --argjson n "$n" "$VERDICT_JQ"'
+    . as $doc
+    | ([ ($doc.findings // [])[]
+         | .severity
+         | (if . == "critical" then 4 elif . == "high" then 3 elif . == "medium" then 2
+             elif . == "low" then 1 else 0 end)
+         | select(. >= $tr)
+       ] | length)
+      + ([ verdicts[] | select(vstatus == "unmitigated") ] | length)
+      + ([ verdicts[] | select(vstatus == "partial") | select(. as $v | $doc | unbacked($v)) ] | length)
+      + (bad_status | length)
+      + malformed
   ' "$input")
   printf '%s\n' "$count"
   [ "$count" -gt 0 ] && return 1
   return 0
+}
+
+cmd_suppress() {
+  local baseline="$1" input="$2" n="${3:-null}"
+  [ "$n" = null ] || check_n "$n"
+  # Step 4.6 step 1: a malformed baseline means no suppression at all (and no
+  # suppressed_count, since no baseline is in play).
+  if ! jq -e '(.schema_version == 1) and ((.acknowledged | type) == "array")' "$baseline" >/dev/null 2>&1; then
+    printf 'Baseline file malformed — proceeding without suppression\n' >&2
+    jq . "$input"
+    return 0
+  fi
+  local ack fps
+  ack=$(jq '[ .acknowledged[] | .fingerprint? // empty | tostring ]' "$baseline")
+  fps=$(cmd_fingerprint "$input" | jq -R . | jq -s .)
+  jq --argjson ack "$ack" --argjson fps "$fps" --argjson n "$n" "$VERDICT_JQ"'
+    . as $doc
+    | ( (open | any(.[]; . as $v | $doc | unbacked($v)))
+        or ((bad_status | length) > 0)
+        or (malformed > 0) ) as $protect_all
+    | open as $open
+    | [ ($doc.findings // []) | to_entries[]
+        | .key as $i | .value as $f
+        | { f: $f,
+            drop: (($ack | index($fps[$i])) != null
+                   and ($protect_all | not)
+                   and (any($open[]; backs($f; .)) | not)) } ] as $marked
+    | [ $marked[] | select(.drop | not) | .f ] as $kept
+    | .findings = $kept
+    | .summary = ((.summary // {})
+        + { suppressed_count: ([ $marked[] | select(.drop) ] | length),
+            findings_by_severity: (
+              reduce ("critical", "high", "medium", "low", "info") as $s ({};
+                .[$s] = ([ $kept[] | select(.severity == $s) ] | length))) })
+  ' "$input"
 }
 
 cmd_sarif() {
@@ -220,13 +320,16 @@ cmd_sarif() {
 
 main() {
   require_cmd
-  [ $# -ge 1 ] || die "usage: sarif_transform.sh <fingerprint|dedup|sarif|failon> ..."
+  [ $# -ge 1 ] || die "usage: sarif_transform.sh <fingerprint|dedup|sarif|failon|suppress> ..."
   local mode="$1"; shift
   case "$mode" in
     fingerprint) [ $# -eq 1 ] || die "fingerprint <findings.json>"; cmd_fingerprint "$1" ;;
     dedup)       [ $# -eq 1 ] || die "dedup <findings.json>";       cmd_dedup "$1" ;;
     sarif)       [ $# -eq 1 ] || die "sarif <findings.json>";       cmd_sarif "$1" ;;
-    failon)      [ $# -eq 2 ] || die "failon <severity> <findings.json>"; cmd_failon "$1" "$2" ;;
+    failon)      { [ $# -eq 2 ] || [ $# -eq 3 ]; } || die "failon <severity> <findings.json> [<n_considerations>]"
+                 cmd_failon "$@" ;;
+    suppress)    { [ $# -eq 2 ] || [ $# -eq 3 ]; } || die "suppress <baseline.json> <findings.json> [<n_considerations>]"
+                 cmd_suppress "$@" ;;
     *)           die "unknown mode: $mode" ;;
   esac
 }

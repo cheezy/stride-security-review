@@ -99,6 +99,17 @@ pin_in "$COMMAND" "the command sends the full_file tag"      '`/security-review 
 pin_in "$COMMAND" "the command names the one spelling"       "the agent's one accepted spelling"
 pin_in "$SKILL"   "the skill lists --considerations"         '- `--considerations <source>`'
 
+# W2279: an rci_pass that re-sends a considerations list keeps considerations
+# mode and its verdicts; a verdict's evidence is the link to its backing finding;
+# the command re-sends its directives on every --rci pass, gates on verdicts and
+# never baseline-suppresses a backing finding.
+pin "an rci_pass with a list is a considerations pass" 'it is a `considerations`-mode pass'
+pin "an rci_pass keeps backing findings"     'never remove a finding that backs a `partial` or `unmitigated` verdict'
+pin "evidence links a verdict to its finding" 'which is how the caller links the two'
+pin_in "$COMMAND" "every rci pass re-sends the directives"  'The same directives Step 4 sent for this input, in the same order and verbatim, on every pass.'
+pin_in "$COMMAND" "an unmitigated verdict trips the gate"    'An `unmitigated` verdict trips the gate at every threshold'
+pin_in "$COMMAND" "baseline keeps backing findings"          'Baseline suppression never drops a finding that backs a verdict'
+
 # The frontmatter tools line must be the set the rule names (W2276).
 tools_line="$(awk 'NR == 1 && /^---$/ { f = 1; next } f && /^---$/ { exit } f && /^tools:/' "$AGENT")"
 if [ "$tools_line" = "tools: Read, Grep, Glob, Bash" ]; then

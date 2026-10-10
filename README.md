@@ -59,6 +59,7 @@ In any git repository, run:
 /stride-security-review:security-review --considerations threat-model.md         # one consideration per line in the file
 /stride-security-review:security-review --considerations "No secrets in logs"    # a single inline consideration
 /stride-security-review:security-review --considerations threat-model.md --json  # raw JSON includes consideration_verdicts
+/stride-security-review:security-review --considerations threat-model.md --rci --fail-on high  # verdicts kept through the critique pass; exit 1 on any unmitigated verdict
 ```
 
 Diff mode answers *"is this change safe to merge?"* — invoke it before pushing a PR. Full mode answers *"what latent issues are in this codebase right now?"* — invoke it when onboarding the plugin onto an existing repo, or on a periodic posture-check cadence. MAESTRO mode answers *"which architectural layer needs the most attention?"* — invoke it on codebases that wire LLMs / agents / Model Context Protocol clients into the request flow, so findings can be grouped by the seven-layer model from Cloud Security Alliance's MAESTRO framework. The flags compose: `--maestro --full --json lib/` is valid. The output JSON schema is identical in diff and full modes; `--maestro` is the one flag that adds an optional field (`maestro_layer`) to each finding when set. Considerations mode answers *"were the security considerations this change declared actually mitigated by the diff?"* — pass `--considerations <source>` (a file with one consideration per line, or an inline string) and each listed consideration comes back with a `mitigated` / `partial` / `unmitigated` verdict alongside the usual findings. It is diff-based (ignored under `--full`) and, like `--maestro`/`--patches`, adds its output (the top-level `consideration_verdicts` array) only when the flag is set.
@@ -202,13 +203,13 @@ The agent returns a single fenced ```json document conforming to the schema belo
 | Field | Emitted when | Notes |
 |---|---|---|
 | `files_skipped` | `--full` is set | Array of `{path, reason}` records for files the binary/size filters dropped. `reason` is one of `binary`, `oversize`, `unreadable`. Always emitted in full mode (even as `[]` to prove the filter ran); omitted in diff mode. |
-| `suppressed_count` | `--baseline` is set | Integer count of findings filtered out by the baseline. Omitted entirely when no baseline is in play. |
-| `rci_passes` | `--rci [N]` is set | Integer recording how many Recursive Criticism & Improvement passes ran on top of the initial dispatch. Omitted when `--rci` is not set. |
-| `consideration_verdicts` | `--considerations <source>` is set | Top-level array with one `{consideration, status, evidence, note}` entry per listed consideration, in order, where `status` is exactly one of `mitigated` / `partial` / `unmitigated` (there is no fourth value; a consideration the change has no surface for is `mitigated`). A `partial`/`unmitigated` verdict is backed by a matching `findings[]` entry. A gap that predates the change is graded against the changed code and named in `note` plus one `info` finding. A consideration that embeds a credential, or names where one lives, is echoed as `[REDACTED — row text embedded a credential]` in its position rather than verbatim. Omitted entirely when `--considerations` is not set. |
+| `suppressed_count` | `--baseline` is set | Integer count of findings filtered out by the baseline. A finding that backs a `partial` or `unmitigated` consideration verdict is never filtered out, so it is never counted here. Omitted entirely when no baseline is in play. |
+| `rci_passes` | `--rci [N]` is set | Integer recording how many Recursive Criticism & Improvement passes ran on top of the initial dispatch. Every pass re-sends the considerations, MAESTRO and patches directives of the first dispatch, so `consideration_verdicts`, `maestro_layer` and `patch` survive it. Omitted when `--rci` is not set. |
+| `consideration_verdicts` | `--considerations <source>` is set | Top-level array with one `{consideration, status, evidence, note}` entry per listed consideration, in order, where `status` is exactly one of `mitigated` / `partial` / `unmitigated` (there is no fourth value; a consideration the change has no surface for is `mitigated`). A `partial`/`unmitigated` verdict is backed by a matching `findings[]` entry, which its `evidence` names by `file:line` (or a `file:start-end` range). A gap that predates the change is graded against the changed code and named in `note` plus one `info` finding. A consideration that embeds a credential, or names where one lives, is echoed as `[REDACTED — row text embedded a credential]` in its position rather than verbatim. Omitted entirely when `--considerations` is not set. |
 
 **Cross-batch dedup (full mode).** Full-mode batches are merged with an order-stable dedup pass keyed by `(file, line, vulnerability_class)` — duplicates that surface across batches or RCI passes collapse to the first occurrence. Diff mode is a single dispatch and dedup is a no-op there; the merged document is byte-identical to the agent's output.
 
-**Flag composition.** All flags compose. `--maestro --rci 2 --patches --baseline --full --json lib/` is a valid invocation. The `--json` flag prints the document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it.
+**Flag composition.** All flags compose. `--maestro --rci 2 --patches --baseline --full --json lib/` is a valid invocation. The `--json` flag prints the document verbatim so other tools (CI gates, Stride hooks, dashboards) can consume it. With `--considerations`, `--rci` re-grades the verdicts on every pass, `--baseline` never suppresses a finding that backs a `partial` or `unmitigated` verdict, and `--fail-on` fails on any `unmitigated` verdict whatever the threshold.
 
 ## Full-codebase scan mode
 
@@ -276,10 +277,12 @@ The plugin ships a reference workflow at [`.github/workflows/security-review.yml
 
 When the slash command is invoked with `--fail-on <severity>`, it exits non-zero if any finding at or above the threshold is present. Severities order as `critical > high > medium > low > info`.
 
+With `--considerations`, the gate also fails closed on the verdicts, whatever the threshold: an `unmitigated` verdict trips it even with no finding, as does a `partial` verdict that no finding backs and a missing or malformed `consideration_verdicts` array. A `partial` verdict with a backing finding is gated by that finding's severity.
+
 | Exit | Meaning |
 |---|---|
-| `0` | No findings at/above `<severity>` (or `--fail-on` not set) |
-| `1` | At least one finding at/above `<severity>` |
+| `0` | No findings at/above `<severity>` and, with `--considerations`, no `unmitigated` verdict, no unbacked `partial` verdict and well-formed verdicts (or `--fail-on` not set) |
+| `1` | At least one finding at/above `<severity>`, or (with `--considerations`) an `unmitigated` verdict, a `partial` verdict no finding backs, or missing or malformed verdicts |
 | `2` | Setup or usage error (invalid `--fail-on` value, missing `ANTHROPIC_API_KEY`, agent dispatch failure) |
 
 Default behavior (no `--fail-on` flag) preserves exit 0 always — byte-identical exit behavior for callers that do not opt in.
@@ -311,9 +314,11 @@ Default behavior (no `--fail-on` flag) preserves exit 0 always — byte-identica
     fi
 ```
 
+The shipped workflow does not pass `--considerations`, so its `jq` post-check counts findings only. If your workflow adds `--considerations`, extend the `jq` gate so it also counts unmitigated verdicts, for example `([.findings[]? | select(.severity == "critical")] | length) + ([.consideration_verdicts[]? | select(.status == "unmitigated")] | length)`. The command's own exit code also covers a `partial` verdict that no finding backs and a missing or malformed verdict array, which a one-line `jq` filter does not.
+
 ### Tightening the threshold
 
-Stricter posture: `--fail-on high` blocks on any critical or high finding. `--fail-on medium` blocks on critical, high, OR medium. `info`-only findings never trip a threshold. Pair with `--baseline` to accept a known set of findings and gate only on new ones.
+Stricter posture: `--fail-on high` blocks on any critical or high finding. `--fail-on medium` blocks on critical, high, OR medium. `info`-only findings never trip a threshold. Pair with `--baseline` to accept a known set of findings and gate only on new ones; a baseline never suppresses a finding that backs a `partial` or `unmitigated` consideration verdict.
 
 ### SARIF output
 

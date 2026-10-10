@@ -26,7 +26,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | W2276 | G452 | plugin | Read-only reviewer: no edits to tracked files, probes only in a temporary copy, Bash restricted or removed per the eval | done in this repo, unreleased; Bash kept under a written contract (eval comparison in the CHANGELOG) |
 | W2277 | G452 | `stride` | `stride` consumes the specialist's `findings[]`; escalation severity comes from the backing finding, not always `critical` | planned |
 | W2278 | G452 | both | Exact mode tag, diff-source rule, results in the final message, `considerations_match_ok` 1:1 check, `--considerations` in the skill inventory | done in both repos, unreleased |
-| W2279 | G452 | plugin | The `/security-review` command's `--rci`, `--fail-on` and baseline interactions with considerations mode | planned |
+| W2279 | G452 | plugin | The `/security-review` command's `--rci`, `--fail-on` and baseline interactions with considerations mode | done in this repo, unreleased |
 | W2280 | G453 | `stride` | Dispatch the specialist in the same message as the task-reviewer; merge after both return | planned |
 | W2281 | G453 | `stride` | Re-dispatch only for non-mitigated considerations or changed evidence files, scoped to them | planned (needs W2280) |
 | W2282 | G453 | plugin | A tool budget for considerations mode; targeted reads; test runs only to confirm a claim | planned |
@@ -256,18 +256,46 @@ is never merely recorded at `important` or above. The mapping must not weaken it
 - A port without `jq`-style self-checks carries the predicate as prose. Note in
   its changelog that the predicate is not executed there.
 
-### W2279 — command fixes (planned)
+### W2279 — command fixes (done in this repo, unreleased)
 
-**Planned change.**
-- Every `--rci` pass re-sends the considerations, MAESTRO and patches directives.
-- `--fail-on` fails on any `unmitigated` verdict.
-- Baseline suppression never removes a finding that backs a verdict.
+**What changed in this repo.**
+- `commands/security-review.md` Step 4 defines **a finding that backs a
+  verdict** once: a finding whose `file` equals a `path:line` or
+  `path:start-end` reference in the `evidence` of a `partial` or `unmitigated`
+  verdict, with its `line` in range. When the link cannot be drawn (an open
+  verdict nothing backs, or verdicts missing, short or outside the three
+  statuses) every finding counts as backing. Steps 4.5, 4.6 and 6 use it.
+- Step 4.5: every `--rci` pass re-sends the directives Step 4 sent — the
+  considerations list, the MAESTRO line and table, the patches line — under
+  the `rci_pass` tag only, and asks for `consideration_verdicts` back. A pass
+  with missing or malformed verdicts exits 2.
+- Step 4.6: baseline suppression never drops a finding that backs a verdict;
+  `suppressed_count` counts only what was dropped.
+- Step 6: an `unmitigated` verdict trips `--fail-on` at every threshold, even
+  with no finding. A `partial` verdict that no finding backs, and missing or
+  malformed verdicts, also trip it. A backed `partial` is gated by its
+  finding's severity. The exit table says so.
+- Step 5: the `--json` and `--sarif` branches go on to Step 6 instead of
+  ending in "Stop.", so `--json --fail-on` gates.
+- `agents/security-reviewer.md`: an `rci_pass` that re-sends a considerations
+  list is a considerations-mode pass and keeps its verdicts and backing
+  findings; a verdict's `evidence` names its backing finding's `file:line`.
+- `scripts/sarif_transform.sh` gains a verdict-aware `failon` (optional
+  consideration count) and a `suppress` mode; `run_transform_tests.sh` locks
+  both (45 checks), and `check_agent_contract.sh` pins the new rules.
+- `.github/workflows/security-review.yml` is unchanged: it never passes
+  `--considerations`. The README says how to extend its `jq` gate if yours does.
 
 **Per variant.**
 - gemini (`commands/security-review.toml`) and opencode
   (`commands/security-review.md`) carry the command.
 - codex carries it as the skill `stride-security-review`.
 - copilot has no command entry point, so the fix does not apply there. Record that.
+- The backing definition, the verdict gate and the baseline rule port as prose.
+  A variant with no `sarif_transform.sh` has no executable check for them;
+  say so in its changelog.
+- The agent half (an `rci_pass` with a list is a considerations pass; evidence
+  names the backing finding) ports to every variant's agent, copilot included.
 
 The command had no recorded use, so this ports last.
 

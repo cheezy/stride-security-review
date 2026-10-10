@@ -3,13 +3,15 @@
 # run_transform_tests.sh — golden-file + spec-assertion tests for the
 # deterministic transforms in scripts/sarif_transform.sh.
 #
-# The transforms (fingerprint, SARIF mapping, dedup, fail-on) are specified in
+# The transforms (fingerprint, SARIF mapping, dedup, fail-on with its verdict
+# gate, baseline suppression that keeps backing findings) are specified in
 # prose in commands/security-review.md and have no other executable source of
 # truth. This runner locks their behavior two ways:
 #   1. Golden diffs — sarif_transform.sh output vs committed test/golden/*.
 #   2. Explicit spec assertions — exact values from the prose contract
 #      (fingerprint preimage, severity->level/security-severity table, dedup key,
-#      fail-on counting) so a golden that drifts WITH the implementation can't
+#      fail-on counting, the verdict gate, the baseline rule for a finding that
+#      backs a verdict) so a golden that drifts WITH the implementation can't
 #      hide a spec violation.
 #
 # Pure: no network, no Claude CLI, no ANTHROPIC_API_KEY. Only jq + a SHA-256
@@ -136,6 +138,77 @@ main() {
   # And a tripped threshold exits non-zero.
   if bash "$XFORM" failon critical "$INPUT" >/dev/null 2>&1; then info_exit=0; else info_exit=1; fi
   assert_eq "failon: tripped threshold exits non-zero" "1" "$info_exit"
+
+  # ---- fail-on: considerations verdicts (W2279) ---------------------------
+  # exit_of <cmd...> — prints 0 or 1 for the command's success/failure.
+  exit_of() { if "$@" >/dev/null 2>&1; then printf '0'; else printf '1'; fi; }
+  local v_unm v_mit
+  v_unm='{"consideration":"c1","status":"unmitigated","evidence":"a.py:15-16","note":"n"}'
+  v_mit='{"consideration":"c2","status":"mitigated","evidence":"c.py:9","note":"n"}'
+
+  echo "{\"findings\":[],\"consideration_verdicts\":[$v_unm]}" > "$tmp/v_nofind.json"
+  assert_eq "failon: unmitigated verdict with zero findings counts 1" "1" "$(bash "$XFORM" failon low "$tmp/v_nofind.json" 1 || true)"
+  assert_eq "failon: unmitigated verdict with zero findings exits 1" "1" "$(exit_of bash "$XFORM" failon low "$tmp/v_nofind.json" 1)"
+
+  echo "{\"findings\":[{\"severity\":\"low\",\"file\":\"a.py\",\"line\":16,\"vulnerability_class\":\"x\",\"description\":\"d\"}],\"consideration_verdicts\":[$v_unm]}" > "$tmp/v_low.json"
+  assert_eq "failon: unmitigated verdict backed by a low finding trips --fail-on high" "1" "$(exit_of bash "$XFORM" failon high "$tmp/v_low.json" 1)"
+  assert_eq "failon: unmitigated verdict trips --fail-on critical too" "1" "$(exit_of bash "$XFORM" failon critical "$tmp/v_low.json")"
+
+  echo "{\"findings\":[{\"severity\":\"high\",\"file\":\"c.py\",\"line\":9,\"vulnerability_class\":\"z\",\"description\":\"f\"}],\"consideration_verdicts\":[$v_mit]}" > "$tmp/v_mit.json"
+  assert_eq "failon: all mitigated + high finding passes --fail-on critical" "0" "$(bash "$XFORM" failon critical "$tmp/v_mit.json" 1 || true)"
+  assert_eq "failon: all mitigated + high finding exits 0 under --fail-on critical" "0" "$(exit_of bash "$XFORM" failon critical "$tmp/v_mit.json" 1)"
+  assert_eq "failon: all mitigated + high finding trips --fail-on high" "1" "$(bash "$XFORM" failon high "$tmp/v_mit.json" 1 || true)"
+
+  echo '{"findings":[{"severity":"low","file":"a.py","line":16,"vulnerability_class":"x","description":"d"}],"consideration_verdicts":[{"consideration":"c","status":"partial","evidence":"a.py:16","note":"n"}]}' > "$tmp/v_part.json"
+  assert_eq "failon: backed partial is gated by its finding's severity" "0" "$(bash "$XFORM" failon high "$tmp/v_part.json" 1 || true)"
+  echo '{"findings":[{"severity":"low","file":"a.py","line":16,"vulnerability_class":"x","description":"d"}],"consideration_verdicts":[{"consideration":"c","status":"partial","evidence":"see note","note":"n"}]}' > "$tmp/v_part_unbacked.json"
+  assert_eq "failon: partial that no finding backs fails closed" "1" "$(bash "$XFORM" failon high "$tmp/v_part_unbacked.json" 1 || true)"
+
+  echo '{"findings":[]}' > "$tmp/v_missing.json"
+  assert_eq "failon: missing verdicts in considerations mode fail closed" "1" "$(bash "$XFORM" failon critical "$tmp/v_missing.json" 1 || true)"
+  echo '{"findings":[],"consideration_verdicts":[]}' > "$tmp/v_short.json"
+  assert_eq "failon: short verdicts array fails closed" "1" "$(bash "$XFORM" failon critical "$tmp/v_short.json" 1 || true)"
+  echo '{"findings":[],"consideration_verdicts":[{"consideration":"c","status":"not_applicable","evidence":"x","note":"n"}]}' > "$tmp/v_badstatus.json"
+  assert_eq "failon: status outside the enum fails closed" "1" "$(bash "$XFORM" failon critical "$tmp/v_badstatus.json" 1 || true)"
+  assert_eq "failon: legacy document without n is unchanged by the verdict rule" "2" "$(bash "$XFORM" failon critical "$INPUT" || true)"
+
+  # Empty considerations: the command refuses an empty list (exit 2, Step 1), so
+  # an n_considerations below 1 is a usage error here too, never a passing gate.
+  local n0_rc
+  set +e; bash "$XFORM" failon critical "$tmp/v_nofind.json" 0 >/dev/null 2>&1; n0_rc=$?; set -e
+  assert_eq "failon: an empty considerations count is a usage error (exit 2)" "2" "$n0_rc"
+  set +e; bash "$XFORM" suppress "$tmp/v_nofind.json" "$tmp/v_nofind.json" 0 >/dev/null 2>&1; n0_rc=$?; set -e
+  assert_eq "suppress: an empty considerations count is a usage error (exit 2)" "2" "$n0_rc"
+
+  # ---- baseline suppression keeps backing findings (W2279) ---------------
+  # A: low a.py:16 backs the unmitigated verdict (evidence a.py:15-16)
+  # B: medium b.py:3 backs nothing
+  # C: high c.py:9 is named only by a mitigated verdict, which protects nothing
+  local finds
+  finds='[{"severity":"low","file":"a.py","line":16,"vulnerability_class":"x","description":"d"},{"severity":"medium","file":"b.py","line":3,"vulnerability_class":"y","description":"e"},{"severity":"high","file":"c.py","line":9,"vulnerability_class":"z","description":"f"}]'
+  echo "{\"findings\":$finds,\"summary\":{\"files_reviewed\":3},\"consideration_verdicts\":[$v_unm,$v_mit]}" > "$tmp/s_doc.json"
+  bash "$XFORM" fingerprint "$tmp/s_doc.json" > "$tmp/s_fp.txt"
+  jq -R . "$tmp/s_fp.txt" > "$tmp/s_fp.lines"
+  jq -s '{schema_version:1,generated_at:"2026-01-01T00:00:00Z",acknowledged:map({fingerprint:.})}' "$tmp/s_fp.lines" > "$tmp/s_base.json"
+  bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/s_doc.json" 2 > "$tmp/s_out.json"
+  assert_eq "suppress: a finding that backs a verdict is never suppressed" "a.py:16" \
+    "$(jq -r '[.findings[] | "\(.file):\(.line)"] | join(" ")' "$tmp/s_out.json")"
+  assert_eq "suppress: non-backing and mitigated-only findings are still suppressed" "2" \
+    "$(jq -r '.summary.suppressed_count' "$tmp/s_out.json")"
+  assert_eq "suppress: severity counts recomputed after suppression" "0 0 0 1 0" \
+    "$(jq -r '.summary.findings_by_severity | "\(.critical) \(.high) \(.medium) \(.low) \(.info)"' "$tmp/s_out.json")"
+
+  echo "{\"findings\":$finds,\"consideration_verdicts\":[{\"consideration\":\"c1\",\"status\":\"unmitigated\",\"evidence\":\"see note\",\"note\":\"n\"}]}" > "$tmp/s_unres.json"
+  assert_eq "suppress: an open verdict nothing backs protects every finding" "3 0" \
+    "$(bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/s_unres.json" 1 | jq -r '"\(.findings | length) \(.summary.suppressed_count)"')"
+  echo "{\"findings\":$finds}" > "$tmp/s_legacy.json"
+  assert_eq "suppress: without considerations every acknowledged finding is dropped" "0 3" \
+    "$(bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/s_legacy.json" | jq -r '"\(.findings | length) \(.summary.suppressed_count)"')"
+  assert_eq "suppress: missing verdicts in considerations mode protect every finding" "3 0" \
+    "$(bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/s_legacy.json" 1 | jq -r '"\(.findings | length) \(.summary.suppressed_count)"')"
+  echo '{"schema_version":2,"acknowledged":[]}' > "$tmp/s_bad_base.json"
+  assert_eq "suppress: malformed baseline leaves the document unchanged" "3 null" \
+    "$(bash "$XFORM" suppress "$tmp/s_bad_base.json" "$tmp/s_legacy.json" 2>/dev/null | jq -r '"\(.findings | length) \(.summary.suppressed_count)"')"
 
   # ---- corruption self-test ----------------------------------------------
   # A deliberately corrupted golden MUST be detected (assert_golden returns
