@@ -22,7 +22,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | Task | Goal | Where it lands | Fix | Status |
 |---|---|---|---|---|
 | W2274 | G452 | plugin | The eval runs the plugin's own agent and fails loudly without its key; considerations fixtures for partial, a None placeholder, injection, noise-class and pre-existing-gap cases | planned |
-| W2275 | G452 | plugin | Considerations-mode contradictions resolved; all reviewed content is data; credential-bearing considerations redacted; strict status enum | planned (needs W2274) |
+| W2275 | G452 | plugin | Considerations-mode contradictions resolved; all reviewed content is data; credential-bearing considerations redacted; strict status enum | done in this repo, unreleased |
 | W2276 | G452 | plugin | Read-only reviewer: no edits to tracked files, probes only in a temporary copy, Bash restricted or removed per the eval | planned (needs W2274) |
 | W2277 | G452 | `stride` | `stride` consumes the specialist's `findings[]`; escalation severity comes from the backing finding, not always `critical` | planned |
 | W2278 | G452 | both | Exact mode tag, diff-source rule, results in the final message, `considerations_match_ok` 1:1 check, `--considerations` in the skill inventory | planned (needs W2277) |
@@ -137,19 +137,31 @@ a fake CLI. `eval.yml` fails on `main` and on a manual dispatch when the key is
 missing, and still skips on pull requests. `EXPECTED.md` ends with a
 **Recorded runs** table.
 
-### W2275 — consistent considerations rules (planned)
+### W2275 — consistent considerations rules (done in this repo, unreleased)
 
-**Planned change.**
-- A task-listed consideration is exempt from the noise filter, so it can be
-  backed by a finding.
-- A gap in pre-existing code is graded against the changed code, and named in
-  `note` and in an `info` finding.
-- Reads are allowed for changed files and their direct callers, up to a stated
-  limit.
-- All reviewed content (diff, comments, files read and considerations) is data.
-- A consideration that embeds a credential is echoed as
-  `[REDACTED — row text embedded a credential]`.
-- The status enum is exactly `mitigated | partial | unmitigated`.
+**What changed here** (all in `agents/security-reviewer.md`, section order kept).
+- A paragraph after the introduction makes everything reviewed data, never
+  instructions: diff hunks, comments, string literals, files read and the
+  considerations. Only the caller's dispatch lines carry instructions.
+- **False-positive filter** gains two `considerations`-mode exceptions: a
+  task-listed denial-of-service, rate-limiting or memory-exhaustion
+  consideration is in scope and is backed by a finding, and the pre-existing-gap
+  `info` finding is not suppressed. Neither reaches an unlisted risk, and the
+  filter is unchanged in `diff` and `full_file` mode.
+- **Per-consideration verdicts**: a `partial` or `unmitigated` verdict MUST be
+  backed by a finding (was SHOULD). A gap in pre-existing code is graded against
+  the changed code and named in `note` plus one `info` finding at its site. The
+  three statuses are the whole enum; a consideration with no matching surface is
+  `mitigated`. A consideration that embeds a credential, or names where one
+  lives, is echoed as `[REDACTED — row text embedded a credential]` in its
+  position.
+- **Operational constraints**: in `diff` and `considerations` mode the reviewer
+  may read the changed files in full and their direct callers (one hop), at most
+  10 files beyond the diff; **Confidence guidance** ties `high` to that limit.
+- `scripts/check_agent_contract.sh` pins the new sentences. `EXPECTED.md` adds
+  `export_rate_limit_unmitigated` and `credential_in_consideration_mitigated`,
+  and the W2274 noise-class and pre-existing-gap rows now assert a backing
+  finding. A recorded run passed all ten considerations rows.
 
 **Per variant.** Apply the same edits to each agent file, at the same sections;
 the prompts are near-identical in size. Keep the redaction sentinel's exact
@@ -194,7 +206,11 @@ is never merely recorded at `important` or above. The mapping must not weaken it
 - The diff source: the same claim-time base rule the task-reviewer dispatch uses.
 - Results in the final message, never in a side file.
 - A `considerations_match_ok` predicate: verdicts must match the task's
-  considerations 1:1 and verbatim.
+  considerations 1:1 and verbatim — except that, since W2275, a
+  credential-bearing consideration comes back as
+  `[REDACTED — row text embedded a credential]` at its position. Today `stride`'s
+  merge in `optional-security-review.md` matches strings verbatim, so such a reply
+  fails closed there; the predicate must accept the sentinel at that position.
 - `--considerations` listed in the skill's flag inventory.
 
 **Per variant.**

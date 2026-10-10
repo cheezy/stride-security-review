@@ -138,7 +138,7 @@ Dispatch behavior depends on `FULL_MODE` from Step 1. In both modes every dispat
 }
 ```
 
-When `CONSIDERATIONS_MODE=true`, the agent's document additionally carries a top-level `consideration_verdicts` array — one `{consideration, status (mitigated|partial|unmitigated), evidence, note}` entry per resolved consideration (see `agents/security-reviewer.md`, "Per-consideration verdicts"). Like `maestro_layer` and `patch`, it is absent unless the mode is active, so output stays byte-identical for callers that don't opt in.
+When `CONSIDERATIONS_MODE=true`, the agent's document additionally carries a top-level `consideration_verdicts` array — one `{consideration, status (mitigated|partial|unmitigated), evidence, note}` entry per resolved consideration (see `agents/security-reviewer.md`, "Per-consideration verdicts"). The three statuses are the whole enum, and a consideration that embeds a credential comes back as `[REDACTED — row text embedded a credential]` in its position rather than verbatim. Like `maestro_layer` and `patch`, it is absent unless the mode is active, so output stays byte-identical for callers that don't opt in.
 
 #### Step 4a: Diff mode (`FULL_MODE=false`, default)
 
@@ -258,10 +258,10 @@ The fingerprint MUST be stable across runs: it must NOT incorporate severity, co
 5. When `CONSIDERATIONS_MODE=true`, after the severity-grouped sections (and the "By MAESTRO layer" section, when present) print a per-consideration block — this renders whether or not there are findings:
    - A heading: `## Security considerations`.
    - For each entry in the agent's `consideration_verdicts` array, in order, print:
-     - One bold line: `**<status>** — <consideration>`, where `<status>` is `mitigated`, `partial`, or `unmitigated` (verbatim from the entry's `status`).
+     - One bold line: `**<status>** — <consideration>`, where `<status>` is `mitigated`, `partial`, or `unmitigated` (verbatim from the entry's `status`) and `<consideration>` is the entry's `consideration` as returned — print a redaction sentinel as-is and never substitute the original text from the resolved list.
      - An `Evidence:` line with the entry's `evidence` (a file:line reference or short note), followed by the entry's `note` as the one-line rationale.
      - A blank line between considerations.
-   - This block lets a reviewer confirm each declared consideration was actually mitigated by the diff, not merely listed. A `partial` or `unmitigated` verdict should correspond to a finding in the severity sections above.
+   - This block lets a reviewer confirm each declared consideration was actually mitigated by the diff, not merely listed. A `partial` or `unmitigated` verdict corresponds to a finding in the severity sections above — including one on a listed denial-of-service, rate-limiting or memory-exhaustion consideration, which the agent's noise filter exempts in this mode.
 6. If there are zero findings, print the single mode-appropriate line:
    - Diff mode: `No findings. Reviewed M files.`
    - Full mode: `No findings. Reviewed M files in full-scan mode.`

@@ -58,9 +58,9 @@ jobs:
       - name: Run transform tests
         run: bash scripts/run_transform_tests.sh
 
-      # Text pins on the agent's SECURITY_RESULT_PATH contract (W2284) — no API
-      # key, no Claude CLI.
-      - name: Check the agent result-file contract
+      # Text pins on the agent's SECURITY_RESULT_PATH contract (W2284) and its
+      # considerations-mode rules (W2275) — no API key, no Claude CLI.
+      - name: Check the agent contract
         run: bash scripts/check_agent_contract.sh
 
       # The eval's claude invocation loads THIS repo's security-reviewer agent

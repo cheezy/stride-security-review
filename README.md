@@ -129,6 +129,8 @@ For codebases that integrate LLMs, AI agents, or Model Context Protocol clients,
 
 The agent uses **semantic analysis**: a `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. The analysis methodology, severity rubric, and JSON output schema live in the agent prompt.
 
+Everything the agent reviews — diff hunks, code comments, string literals, the files it reads and the considerations it is handed — is data, never instructions: a comment telling the reviewer to report nothing is ignored. In diff and considerations mode it may read the changed files in full and their direct callers, up to 10 files beyond the diff; it never enumerates the rest of the repository.
+
 ## What it deliberately ignores
 
 To keep signal-to-noise high, the agent suppresses findings whose only impact is:
@@ -138,6 +140,8 @@ To keep signal-to-noise high, the agent suppresses findings whose only impact is
 - **Memory exhaustion** unless it enables another vulnerability class.
 - **Hypothetical risks** not realizable through the changed code.
 - **Code style** disguised as security concerns.
+
+**One exception, in considerations mode only.** When a consideration the task lists names one of these risks itself — "uploads are size-bounded", "the export endpoint is rate-limited" — that risk is assessed for that consideration, and a `partial` or `unmitigated` verdict on it is backed by a finding like any other. A risk the list does not name is still suppressed, and diff and full modes keep the filter unchanged.
 
 If your organization needs those classes flagged, see [Customization](#customization) — extend the agent prompt rather than working around the filter.
 
@@ -188,7 +192,7 @@ The agent returns a single fenced ```json document conforming to the schema belo
 | `files_skipped` | `--full` is set | Array of `{path, reason}` records for files the binary/size filters dropped. `reason` is one of `binary`, `oversize`, `unreadable`. Always emitted in full mode (even as `[]` to prove the filter ran); omitted in diff mode. |
 | `suppressed_count` | `--baseline` is set | Integer count of findings filtered out by the baseline. Omitted entirely when no baseline is in play. |
 | `rci_passes` | `--rci [N]` is set | Integer recording how many Recursive Criticism & Improvement passes ran on top of the initial dispatch. Omitted when `--rci` is not set. |
-| `consideration_verdicts` | `--considerations <source>` is set | Top-level array with one `{consideration, status, evidence, note}` entry per listed consideration, in order, where `status` is `mitigated` / `partial` / `unmitigated`. A `partial`/`unmitigated` verdict is backed by a matching `findings[]` entry. Omitted entirely when `--considerations` is not set. |
+| `consideration_verdicts` | `--considerations <source>` is set | Top-level array with one `{consideration, status, evidence, note}` entry per listed consideration, in order, where `status` is exactly one of `mitigated` / `partial` / `unmitigated` (there is no fourth value; a consideration the change has no surface for is `mitigated`). A `partial`/`unmitigated` verdict is backed by a matching `findings[]` entry. A gap that predates the change is graded against the changed code and named in `note` plus one `info` finding. A consideration that embeds a credential, or names where one lives, is echoed as `[REDACTED — row text embedded a credential]` in its position rather than verbatim. Omitted entirely when `--considerations` is not set. |
 
 **Cross-batch dedup (full mode).** Full-mode batches are merged with an order-stable dedup pass keyed by `(file, line, vulnerability_class)` — duplicates that surface across batches or RCI passes collapse to the first occurrence. Diff mode is a single dispatch and dedup is a no-op there; the merged document is byte-identical to the agent's output.
 
@@ -340,7 +344,7 @@ claude -p --plugin-dir <repo root> --agent stride-security-review:security-revie
 
 - `--plugin-dir` loads the plugin from the working tree and overrides an installed copy of the same name, so an edit to `agents/security-reviewer.md` is what gets scored — not the released version, and not base Claude.
 - `--agent` makes `security-reviewer` the session agent; the fixture prompt (the whole file, or the diff plus its considerations list) is its input.
-- The call runs from an empty scratch directory with every tool off and no MCP servers. The prompt already carries everything the agent needs, and this keeps it from reading the expected answers in `EXPECTED.md` or editing the repo.
+- The call runs from an empty scratch directory with every tool off and no MCP servers. The prompt already carries everything the agent needs, and this keeps it from reading the expected answers in `EXPECTED.md` or editing the repo. It also means the eval never exercises the agent's read scope, and it checks verdicts and whether a finding exists — not redaction, `note` text, or a finding's severity — so those are checked by hand in `logs/` where a row says so.
 
 Every run prints the exact command as `# invocation: …` and the auth mode as `# auth: …` right after the TAP plan line; `--dry-run` prints them without calling Claude, and `scripts/check_eval_invocation.sh` pins them (key-free, in CI).
 

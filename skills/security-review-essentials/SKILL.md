@@ -87,7 +87,7 @@ A `summary` object reports `files_reviewed` and a per-severity finding count.
 
 ## False-positive filter
 
-The agent intentionally suppresses findings whose only impact is generic denial-of-service, generic rate-limiting absence, or generic memory exhaustion — unless those intersect another class (e.g., rate-limiting absence on an authentication endpoint stays in scope under Authentication flaws). This filter exists because experience showed those classes generate noise that drowns out the actionable findings.
+The agent intentionally suppresses findings whose only impact is generic denial-of-service, generic rate-limiting absence, or generic memory exhaustion — unless those intersect another class (e.g., rate-limiting absence on an authentication endpoint stays in scope under Authentication flaws). This filter exists because experience showed those classes generate noise that drowns out the actionable findings. The one exception is considerations mode: a consideration the task itself lists that names one of these risks ("uploads are size-bounded") is assessed, and its `partial` or `unmitigated` verdict is backed by a finding. Diff and full modes keep the filter unchanged.
 
 If your organization has a stricter policy that wants those classes flagged, extend the agent prompt — do not work around it by ignoring the filter list, because that loses the auditability trail.
 
