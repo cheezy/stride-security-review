@@ -328,29 +328,58 @@ The `--base <ref>` flag widens the diff to `<ref>...HEAD` (three-dot range). Thr
 
 ## Running the eval locally
 
-The `scripts/run_eval.sh` runner dispatches the `security-reviewer` agent against every fixture in `test/fixtures/` and asserts the findings documented in `test/fixtures/EXPECTED.md`. It is the same suite CI runs (`.github/workflows/eval.yml`).
+The `scripts/run_eval.sh` runner dispatches **this checkout's** `security-reviewer` agent against every fixture in `test/fixtures/` and asserts the results documented in `test/fixtures/EXPECTED.md`. It is the same suite CI runs (`.github/workflows/eval.yml`).
+
+What "this checkout's agent" means, concretely — each fixture runs as:
+
+```bash
+claude -p --plugin-dir <repo root> --agent stride-security-review:security-reviewer \
+  --tools '' --disallowedTools '<file and shell tools>' --strict-mcp-config \
+  --no-session-persistence --output-format text      # prompt on stdin
+```
+
+- `--plugin-dir` loads the plugin from the working tree and overrides an installed copy of the same name, so an edit to `agents/security-reviewer.md` is what gets scored — not the released version, and not base Claude.
+- `--agent` makes `security-reviewer` the session agent; the fixture prompt (the whole file, or the diff plus its considerations list) is its input.
+- The call runs from an empty scratch directory with every tool off and no MCP servers. The prompt already carries everything the agent needs, and this keeps it from reading the expected answers in `EXPECTED.md` or editing the repo.
+
+Every run prints the exact command as `# invocation: …` and the auth mode as `# auth: …` right after the TAP plan line; `--dry-run` prints them without calling Claude, and `scripts/check_eval_invocation.sh` pins them (key-free, in CI).
 
 ### Prerequisites
 
 - `jq` on `$PATH`
 - The Claude Code CLI (`claude`) on `$PATH` — set `CLAUDE_CLI` if your binary lives elsewhere
-- `ANTHROPIC_API_KEY` exported (unless using `--dry-run`)
+- Auth (unless using `--dry-run`): `ANTHROPIC_API_KEY` exported, **or** a CLI logged in to claude.ai (`claude auth status` reports `loggedIn`). With neither, the runner exits `2`. It never prints the key or the auth-status output.
 
 ### Run
 
 ```bash
 bash scripts/run_eval.sh                                  # every expectation in EXPECTED.md — check_fixtures.sh prints the current count
 bash scripts/run_eval.sh --fixture test/fixtures/sql_injection.py
+bash scripts/run_eval.sh --only considerations/           # only fixtures whose path starts with the prefix
 bash scripts/run_eval.sh --dry-run                        # parser/comparator only; no API calls
 bash scripts/run_eval.sh --verbose                        # echo prompts and raw agent JSON to stderr
 ```
 
-Output is [TAP 13](https://testanything.org/tap-version-13-specification.html): one `ok N` / `not ok N` line per fixture, followed by a trailing pass/fail summary. Exit code `0` means every expected `vulnerability_class` + `severity` was produced at least once on the expected file (the Bitbucket multi-finding fixture requires both expected findings).
+| Variable | Default | Purpose |
+|---|---|---|
+| `EVAL_PLUGIN_DIR` | the repo root | Plugin directory to load — point it at a modified copy to check that a prompt change moves the score |
+| `EVAL_AGENT` | `stride-security-review:security-reviewer` | Agent to run |
+| `EVAL_TOOLS` | empty (no tools) | Value passed to `claude --tools` |
+| `LOG_DIR` | `logs` | Where per-fixture logs land |
 
-Per fixture, two files land in `logs/` (gitignored):
+Output is [TAP 13](https://testanything.org/tap-version-13-specification.html): one `ok N` / `not ok N` line per fixture, followed by a trailing pass/fail summary. Exit code `0` means every expectation held: for a findings fixture, the expected `vulnerability_class` + `severity` was produced at least once on the expected file (the Bitbucket multi-finding fixture requires both expected findings); for a `→ NONE` control, no finding at all; for a considerations-mode fixture, the ordered `consideration_verdicts[].status` list matches the row, plus the row's backing-finding expectation when it states one.
+
+Per fixture, three files land in `logs/` (gitignored):
 
 - `logs/<sanitized-path>.json` — the parsed JSON document the agent emitted, with any wrapping prose stripped.
 - `logs/<sanitized-path>.raw.txt` — the full unmodified stdout from `claude -p`, useful when the parser can't fence-extract or when you want to see what surrounded the JSON.
+- `logs/<sanitized-path>.err.txt` — the CLI's stderr; an unknown agent name or an auth failure shows up here.
+
+`EXPECTED.md` ends with a **Recorded runs** table: the date, CLI version, auth mode and TAP result of each real run, so a ticked row always traces back to a run rather than to a hand edit.
+
+### In CI
+
+`.github/workflows/eval.yml` runs the key-free checks first (fixture parity, transform tests, the agent contract pins, the invocation check), then the eval. On a push to `main` or a manual dispatch, a missing `ANTHROPIC_API_KEY` secret **fails** the job — a green run on `main` means the agent eval actually ran. On a pull request the key is often unavailable by design (GitHub gives fork and Dependabot PRs no secrets), so there the eval is skipped with a notice and the key-free checks still gate the PR. `scripts/check_eval_invocation.sh` runs the workflow's key-gate script for each event, so this behaviour is tested rather than only described.
 
 ### Tolerance
 

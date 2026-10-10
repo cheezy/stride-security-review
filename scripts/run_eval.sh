@@ -20,22 +20,47 @@
 # zero-finding (negative) expectation. consideration_verdicts is agent output,
 # so there is no golden-file coverage for this mode.
 #
+# Which agent runs: every fixture is dispatched to THIS working tree's
+# security-reviewer agent, not to base Claude and not to an installed copy —
+# `--plugin-dir <repo root>` loads the plugin from the checkout (it overrides an
+# installed plugin of the same name) and `--agent
+# stride-security-review:security-reviewer` makes that agent the session agent.
+# Each call runs from an empty scratch directory with every tool disabled and no
+# MCP servers, so the agent judges only the prompt (which carries the whole file
+# or diff) and can neither read EXPECTED.md's answers nor edit the repo.
+#
 # Usage:
 #   bash scripts/run_eval.sh                            # all fixtures
 #   bash scripts/run_eval.sh --fixture <path>           # one fixture
+#   bash scripts/run_eval.sh --only <prefix>            # fixtures whose path starts with <prefix>
+#                                                       #   e.g. --only considerations/
 #   bash scripts/run_eval.sh --dry-run                  # parser/comparator only; no API calls
 #   bash scripts/run_eval.sh --verbose                  # echo prompts and raw agent JSON
 #
+# Every run prints `# invocation: <argv>` and `# auth: <mode>` after the TAP
+# plan line, so the exact claude command (agent flag included) is on record;
+# --dry-run prints it too without calling claude.
+#
+# Auth (not needed for --dry-run): ANTHROPIC_API_KEY when set (CI), otherwise a
+# claude.ai login (`claude auth status` reports loggedIn). Neither the key nor
+# the auth-status output is ever printed. With neither, exit 2.
+#
 # Env:
-#   ANTHROPIC_API_KEY   required unless --dry-run
+#   ANTHROPIC_API_KEY   API key; optional locally when the CLI is logged in
 #   CLAUDE_CLI          path to the Claude Code CLI (default: claude)
+#   EVAL_PLUGIN_DIR     plugin directory to load (default: this repo's root)
+#   EVAL_AGENT          agent to run (default: stride-security-review:security-reviewer)
+#   EVAL_TOOLS          value for claude --tools (default: empty = no tools)
 #   FIXTURES_DIR        default: test/fixtures
 #   LOG_DIR             default: logs
+#
+# Logs per fixture: <stem>.raw.txt (claude stdout), <stem>.err.txt (claude
+# stderr — agent-not-found and auth errors land here), <stem>.json (parsed).
 #
 # Exit codes:
 #   0  all fixtures pass
 #   1  one or more fixtures fail
-#   2  setup/usage error (missing dependency, bad args)
+#   2  setup/usage error (missing dependency, bad args, no auth)
 
 set -euo pipefail
 
@@ -44,12 +69,27 @@ EXPECTED_FILE="${FIXTURES_DIR}/EXPECTED.md"
 LOG_DIR="${LOG_DIR:-logs}"
 CLAUDE_CLI="${CLAUDE_CLI:-claude}"
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PLUGIN_DIR="${EVAL_PLUGIN_DIR:-$ROOT_DIR}"
+AGENT="${EVAL_AGENT:-stride-security-review:security-reviewer}"
+# `-` not `:-`: an explicitly empty EVAL_TOOLS is the default (no tools), and a
+# caller who sets it to a list gets exactly that list.
+TOOLS="${EVAL_TOOLS-}"
+# Belt and braces with --tools "": deny the file and shell tools by name too, so
+# the agent can never read the expected answers in EXPECTED.md or edit the repo.
+DISALLOWED_TOOLS="Read Grep Glob Bash Edit Write NotebookEdit WebFetch WebSearch"
+
 VERBOSE=0
 DRY_RUN=0
 SINGLE_FIXTURE=""
+ONLY_PREFIX=""
+AUTH_MODE=""
+WORK_DIR=""
+CLAUDE_ARGV=()
 
 usage() {
-  sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'
+  # Print the leading comment block (from line 3 to the first non-comment line).
+  awk 'NR < 3 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
 }
 
 die() {
@@ -61,9 +101,54 @@ require_cmd() {
   command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
   if [ "$DRY_RUN" -eq 0 ]; then
     command -v "$CLAUDE_CLI" >/dev/null 2>&1 || die "$CLAUDE_CLI not found on PATH (set CLAUDE_CLI or pass --dry-run)"
-    [ -n "${ANTHROPIC_API_KEY:-}" ] || die "ANTHROPIC_API_KEY not set (or pass --dry-run)"
+    detect_auth
+  else
+    AUTH_MODE="dry-run"
   fi
+  [ -d "$PLUGIN_DIR" ] || die "plugin directory not found at $PLUGIN_DIR (EVAL_PLUGIN_DIR)"
   [ -f "$EXPECTED_FILE" ] || die "EXPECTED.md not found at $EXPECTED_FILE"
+}
+
+# detect_auth
+# Sets AUTH_MODE to `api-key` when ANTHROPIC_API_KEY is set, else to
+# `claude.ai-login` when the CLI reports a logged-in session, else dies (exit 2).
+# Never prints the key, and never prints the auth-status JSON (it names the
+# account) — only the mode name.
+detect_auth() {
+  if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    AUTH_MODE="api-key"
+    return 0
+  fi
+  if "$CLAUDE_CLI" auth status 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; then
+    AUTH_MODE="claude.ai-login"
+    return 0
+  fi
+  die "no Claude auth: export ANTHROPIC_API_KEY or log the CLI in (claude auth login), or pass --dry-run"
+}
+
+# build_claude_argv
+# Fills CLAUDE_ARGV with the exact command each fixture is dispatched with: the
+# working tree's plugin via --plugin-dir, its security-reviewer as the session
+# agent, no tools, no MCP servers, no session persisted.
+build_claude_argv() {
+  CLAUDE_ARGV=(
+    "$CLAUDE_CLI" -p
+    --plugin-dir "$PLUGIN_DIR"
+    --agent "$AGENT"
+    --tools "$TOOLS"
+    --disallowedTools "$DISALLOWED_TOOLS"
+    --strict-mcp-config
+    --no-session-persistence
+    --output-format text
+  )
+}
+
+# print_invocation
+# Prints `# invocation: <argv>` (shell-quoted) as a TAP comment line.
+print_invocation() {
+  printf '# invocation:'
+  printf ' %q' "${CLAUDE_ARGV[@]}"
+  printf '\n'
 }
 
 # parse_expected_md
@@ -88,11 +173,13 @@ parse_expected_md() {
       # considerations-mode marker: " → CONSIDERATIONS <s1>,<s2>,... [AND finding|AND clean]".
       # Emits a record the considerations comparator interprets: class=__CONSIDERATIONS__,
       # severity=verdict CSV, cwe field carries the finding expectation (F=at least one
-      # backing finding, C=zero findings, empty=unchecked), count=number of verdicts.
+      # backing finding, C=zero findings, U=unchecked), count=number of verdicts.
+      # U is a placeholder, never an empty field: the caller splits records with
+      # IFS=TAB, and bash collapses consecutive tabs, which would shift fields.
       if (rest ~ /^ +→ +CONSIDERATIONS +/) {
         head = rest
         sub(/^ +→ +CONSIDERATIONS +/, "", head)
-        fexp = ""
+        fexp = "U"
         if (head ~ / AND +finding( |$|—)/) fexp = "F"
         else if (head ~ / AND +clean( |$|—)/) fexp = "C"
         split(head, hp, " ")
@@ -228,9 +315,10 @@ invoke_agent() {
     printf '# --- prompt for %s ---\n%s\n# --- end prompt ---\n' "$rel" "$prompt" >&2
   fi
 
-  # `claude -p` reads the prompt from stdin or as the first positional arg.
-  # We pass it on stdin and request text output. Adjust if your CLI differs.
-  if ! printf '%s' "$prompt" | "$CLAUDE_CLI" -p --output-format text > "$raw" 2>/dev/null; then
+  # The prompt goes on stdin. The call runs from WORK_DIR, an empty scratch
+  # directory, so the agent sees no repo files; stderr is kept for triage.
+  local err="$LOG_DIR/$stem.err.txt"
+  if ! (cd "$WORK_DIR" && printf '%s' "$prompt" | "${CLAUDE_ARGV[@]}") > "$raw" 2> "$err"; then
     return 1
   fi
 
@@ -269,7 +357,7 @@ compare_finding() {
 
   # Considerations-mode case (EXPECTED.md row → CONSIDERATIONS; cls="__CONSIDERATIONS__").
   # `sev` carries the expected ordered verdict CSV; `cwe` carries the finding
-  # expectation (F=at least one backing finding, C=zero findings, empty=unchecked).
+  # expectation (F=at least one backing finding, C=zero findings, U=unchecked).
   # Assert the agent's consideration_verdicts[].status list matches, in order.
   if [ "$cls" = "__CONSIDERATIONS__" ]; then
     local exp_verdicts="$sev" fexp="$cwe"
@@ -292,7 +380,7 @@ compare_finding() {
     if [ "$ok" -eq 0 ]; then
       cat >&2 <<EOF
   --- expected ($json)
-  - considerations [$exp_verdicts]${fexp:+ ($fexp)}
+  - considerations [$exp_verdicts] ($fexp)
   + $detail
 EOF
       return 1
@@ -475,6 +563,11 @@ main() {
         SINGLE_FIXTURE="$2"
         shift 2
         ;;
+      --only)
+        [ $# -ge 2 ] || die "--only requires an argument"
+        ONLY_PREFIX="$2"
+        shift 2
+        ;;
       --fixtures-dir)
         [ $# -ge 2 ] || die "--fixtures-dir requires an argument"
         FIXTURES_DIR="$2"
@@ -514,9 +607,37 @@ main() {
     records=("${filtered[@]}")
   fi
 
+  # Filter to a path prefix if requested (e.g. --only considerations/).
+  if [ -n "$ONLY_PREFIX" ]; then
+    local prefix="$ONLY_PREFIX"
+    prefix="${prefix#"$FIXTURES_DIR/"}"
+    local kept=()
+    for r in "${records[@]}"; do
+      local p="${r%%	*}"
+      case "$p" in
+        "$prefix"*) kept+=("$r") ;;
+      esac
+    done
+    if [ "${#kept[@]}" -eq 0 ]; then
+      die "no fixture in $EXPECTED_FILE matches --only $ONLY_PREFIX"
+    fi
+    records=("${kept[@]}")
+  fi
+
+  # LOG_DIR must be absolute: invoke_agent writes logs from inside WORK_DIR.
+  mkdir -p "$LOG_DIR"
+  LOG_DIR="$(cd "$LOG_DIR" && pwd)"
+  build_claude_argv
+  if [ "$DRY_RUN" -eq 0 ]; then
+    WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/run_eval.XXXXXX")"
+    trap 'rm -rf "$WORK_DIR"' EXIT
+  fi
+
   local total="${#records[@]}"
   printf 'TAP version 13\n'
   printf '1..%d\n' "$total"
+  print_invocation
+  printf '# auth: %s\n' "$AUTH_MODE"
 
   local n=0 fails=0
   for rec in "${records[@]}"; do
@@ -528,7 +649,7 @@ main() {
     if [ "$cls" = "__NONE__" ]; then
       detail="negative control"
     elif [ "$cls" = "__CONSIDERATIONS__" ]; then
-      detail="considerations: $sev${cwe:+ ($cwe)}"
+      detail="considerations: $sev ($cwe)"
     else
       detail="$cls/$sev"
       [ "$count" -gt 1 ] && detail="$detail x$count"

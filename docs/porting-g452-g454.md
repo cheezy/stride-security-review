@@ -109,7 +109,7 @@ and W2284's consumer half. `stride` keeps the deep sub-step in
 
 ## G452 — accuracy
 
-### W2274 — an eval that tests the real agent (planned)
+### W2274 — an eval that tests the real agent (done in this repo, unreleased)
 
 **Problem.** `scripts/run_eval.sh:233` pipes a bare prompt into `claude -p` with no
 `--plugin-dir` or `--agent`, so it scores base Claude, not this agent. The CI eval
@@ -123,8 +123,19 @@ ever been ticked.
   Claude Code prompt.
 - **gemini, opencode, codex:** build a runner around their own CLI, or say plainly
   in the README that the variant is not evaluated.
-- **All variants:** port the five new considerations fixtures. Each variant
-  already carries a `fixtures/` directory.
+- **All variants:** port the new considerations fixtures (partial, a `None —`
+  placeholder, injection inside a consideration, injection inside the diff, a
+  noise-class consideration and a pre-existing gap) with their `EXPECTED.md`
+  rows. Each variant already carries a `fixtures/` directory.
+
+**What changed here** (port the shape, not the flags, to each variant's CLI).
+`scripts/run_eval.sh` now runs `claude -p --plugin-dir <repo root> --agent
+stride-security-review:security-reviewer` from an empty scratch directory with
+every tool off, prints the exact invocation, and accepts either an API key or a
+claude.ai login. `scripts/check_eval_invocation.sh` pins that invocation against
+a fake CLI. `eval.yml` fails on `main` and on a manual dispatch when the key is
+missing, and still skips on pull requests. `EXPECTED.md` ends with a
+**Recorded runs** table.
 
 ### W2275 — consistent considerations rules (planned)
 

@@ -26,6 +26,26 @@ Why accepted rather than backfilled:
 
 The audit also found **zero** GitHub releases without a matching tag, so the record is incomplete in only this one direction.
 
+## [Unreleased]
+
+### Fixed
+
+- **The eval now scores this plugin's agent, not base Claude (W2274).** `scripts/run_eval.sh` piped each fixture prompt to a bare `claude -p`, so every result measured the base model and the README's description of the eval was wrong. Each fixture now runs as `claude -p --plugin-dir <repo root> --agent stride-security-review:security-reviewer`, from an empty scratch directory with every tool off and no MCP servers, so the agent cannot read the expected answers or edit the repo. The exact invocation and the auth mode are printed after the TAP plan line (`--dry-run` included), and the CLI's stderr is kept in `logs/<stem>.err.txt` instead of being discarded.
+- **Considerations rows without an `AND` clause were mis-parsed.** The "findings unchecked" form shifted fields when split on tabs; it now carries an explicit `U` marker.
+
+### Changed
+
+- **CI fails on `main` without the key.** `.github/workflows/eval.yml` used to skip the agent eval whenever `ANTHROPIC_API_KEY` was missing, which made it skip every run. A push to `main` or a manual dispatch now fails with an error when the secret is not configured; pull requests (where fork and Dependabot PRs get no secrets) still skip with a notice. The job timeout is raised from 30 to 45 minutes.
+- **The eval accepts a claude.ai login locally.** `run_eval.sh` uses `ANTHROPIC_API_KEY` when set and otherwise a logged-in CLI; with neither it exits `2`. Neither the key nor the auth-status output is printed.
+
+### Added
+
+- `run_eval.sh --only <prefix>` runs a subset (for example `--only considerations/`); `EVAL_PLUGIN_DIR`, `EVAL_AGENT` and `EVAL_TOOLS` override the plugin directory, agent and tool list.
+- `scripts/check_eval_invocation.sh` (key-free, wired into CI) pins the invocation against a fake CLI: the plugin and agent flags, the isolated working directory, the considerations-mode prompt, and the exit `2` when there is no auth. It also extracts and runs the workflow's key-gate script, asserting the skip on `pull_request` and the failure on `push` and `workflow_dispatch`.
+- Six considerations-mode fixtures: a `partial` verdict, a `None —` placeholder, injection text inside a consideration, injection text inside the diff, a noise-class (memory-exhaustion) consideration and a gap in pre-existing code. The last two assert the verdict only until W2275 settles their backing findings.
+- `check_fixtures.sh` also checks that each considerations `.diff` has its `.considerations` sidecar, and the reverse, and that the row lists one verdict per consideration.
+- `test/fixtures/EXPECTED.md` ends with a **Recorded runs** table. The first real run (considerations rows only, claude.ai login) passed 8/8, and those rows are ticked; a scratch copy with a broken agent prompt failed, confirming that the eval measures the agent.
+
 ## [2.6.0] - 2026-10-02
 
 ### Added — the agent writes its full result to `SECURITY_RESULT_PATH` and returns at most 10 lines (W2284)

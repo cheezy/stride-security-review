@@ -28,7 +28,10 @@ permissions:
 jobs:
   eval:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # One sequential claude call per fixture. The recorded considerations run
+    # (EXPECTED.md "Recorded runs") averaged about 11 s a fixture; full-file
+    # fixtures are larger, so allow headroom for the whole suite.
+    timeout-minutes: 45
     steps:
       # actions/checkout v4.2.2 — pin to commit SHA, the plugin flags floating tags.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -60,20 +63,38 @@ jobs:
       - name: Check the agent result-file contract
         run: bash scripts/check_agent_contract.sh
 
-      # The agent eval below needs ANTHROPIC_API_KEY; everything above does not.
-      # When the secret is absent (a fork, or a repo that has not configured it),
-      # skip the CLI install + eval instead of failing the whole pipeline — all the
-      # key-free verification (fixture parity, transform tests) has already run.
+      # The eval's claude invocation loads THIS repo's security-reviewer agent
+      # (--plugin-dir + --agent), runs it from an isolated cwd, and gates on auth
+      # (W2274) — checked against a fake CLI, so no API key and no Claude CLI.
+      # It also executes the "Detect ANTHROPIC_API_KEY" script below for each
+      # event, so the skip-on-PR / fail-on-main gate is tested, not just read.
+      - name: Check the eval invocation
+        run: bash scripts/check_eval_invocation.sh
+
+      # Fails loudly on main, skips quietly on pull requests. The agent eval below
+      # needs ANTHROPIC_API_KEY; everything above does not.
+      # - push to main / workflow_dispatch: a missing key is a configuration
+      #   error, so the job FAILS (::error + exit 1) instead of skipping. A green
+      #   run on main therefore always means the agent eval actually ran.
+      # - pull_request: GitHub withholds secrets from fork PRs (and Dependabot
+      #   PRs), so a missing key there is expected — emit a notice and skip the
+      #   CLI install + eval; the key-free checks above have already run.
+      # The event name comes in through env, never through a template expression
+      # inside `run:`. The key's value is only ever tested for emptiness.
       - name: Detect ANTHROPIC_API_KEY
         id: apikey
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Agent eval skipped::ANTHROPIC_API_KEY is not configured — skipping the Claude CLI install and the agent eval (scripts/run_eval.sh). Fixture parity and transform tests still ran and passed."
+            echo "::notice title=Agent eval skipped::ANTHROPIC_API_KEY is not available to this pull request (fork and Dependabot PRs get no secrets) — skipping the Claude CLI install and the agent eval (scripts/run_eval.sh). The key-free checks still ran and passed."
+          else
+            echo "::error title=Agent eval cannot run::ANTHROPIC_API_KEY is not configured for this repository, so the agent eval (scripts/run_eval.sh) cannot run on ${EVENT_NAME}. Add the secret under Settings → Secrets and variables → Actions."
+            exit 1
           fi
 
       - name: Install Claude Code CLI
