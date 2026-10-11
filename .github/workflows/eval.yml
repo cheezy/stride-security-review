@@ -103,11 +103,23 @@ jobs:
         if: steps.apikey.outputs.present == 'true'
         run: npm install -g @anthropic-ai/claude-code
 
+      # W2285: the agent reads its rule packs (packs/) and mode files (modes/)
+      # on demand, so a tool-less run would score the core prompt alone. The
+      # eval gives it Read scoped to a copy of the plugin without test/, .git or
+      # logs/: Read reaches that copy only (its packs, modes and docs) and never
+      # EXPECTED.md; every other tool is denied.
       - name: Run eval
         if: steps.apikey.outputs.present == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: bash scripts/run_eval.sh
+        run: |
+          copy="$RUNNER_TEMP/plugin-under-eval"
+          mkdir -p "$copy"
+          tar --exclude=./test --exclude=./.git --exclude=./logs -cf - . | tar -xf - -C "$copy"
+          copy="$(cd "$copy" && pwd -P)"
+          EVAL_PLUGIN_DIR="$copy" EVAL_TOOLS=Read EVAL_ALLOWED_TOOLS="Read(/$copy/**)" \
+            EVAL_DISALLOWED_TOOLS='Grep Glob Bash Edit Write NotebookEdit WebFetch WebSearch' \
+            bash scripts/run_eval.sh
 
       # actions/upload-artifact v4.4.3 — upload logs on failure for triage.
       - name: Upload logs on failure

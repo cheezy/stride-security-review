@@ -151,6 +151,27 @@ ANTHROPIC_API_KEY="placeholder-not-a-real-key" EVENT_NAME=push GITHUB_OUTPUT="$T
 check "a configured key runs the eval"          test "$? $(tr -d '\n' < "$TMP/gh_output")" = "0 present=true"
 check "the gate never prints the key"           lacks "$TMP/gate-key.out" "placeholder-not-a-real-key"
 
+# --- 5. CI scores the agent with its packs (W2285) -------------------------
+# The agent reads packs/ and modes/ on demand, so the CI run must give it Read,
+# scoped to a plugin copy without test/ so EXPECTED.md stays out of reach.
+awk '
+  /- name: Run eval$/ { in_step = 1; next }
+  in_step && !in_run && /^ +run: \|$/ { in_run = 1; match($0, /^ +/); ind = RLENGTH; next }
+  in_run {
+    if ($0 ~ /^[[:space:]]*$/) { print ""; next }
+    match($0, /^ */)
+    if (RLENGTH <= ind) exit
+    print substr($0, ind + 3)
+  }
+' "$WORKFLOW" > "$TMP/run-eval.sh"
+check "CI copies the plugin without test/"      contains "$TMP/run-eval.sh" "--exclude=./test"
+check "CI leaves .git out of the copy"         contains "$TMP/run-eval.sh" "--exclude=./.git"
+check "CI leaves logs/ out of the copy"        contains "$TMP/run-eval.sh" "--exclude=./logs"
+check "CI points the eval at the copy"          contains "$TMP/run-eval.sh" 'EVAL_PLUGIN_DIR="$copy"'
+check "CI gives the agent Read"                 contains "$TMP/run-eval.sh" "EVAL_TOOLS=Read"
+check "CI scopes Read to the copy"              contains "$TMP/run-eval.sh" 'EVAL_ALLOWED_TOOLS="Read(/$copy/**)"'
+check "CI keeps the shell and writes denied"    contains "$TMP/run-eval.sh" "EVAL_DISALLOWED_TOOLS='Grep Glob Bash Edit Write NotebookEdit WebFetch WebSearch'"
+
 if [ "$fail" -ne 0 ]; then
   echo "eval invocation: FAILED"
   exit 1

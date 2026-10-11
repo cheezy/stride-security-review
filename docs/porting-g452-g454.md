@@ -32,8 +32,8 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | W2282 | G453 | plugin | A tool budget for considerations mode; targeted reads; test runs only to confirm a claim | done in this repo, unreleased |
 | W2283 | G453 | `stride` | The task-reviewer skips per-consideration verdicts when the deep review will run | planned (needs W2280) |
 | W2284 | G454 | both | Full result written to `SECURITY_RESULT_PATH`; at most about 10 lines returned | planned |
-| W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | planned (claim after W2274) |
-| W2286 | G454 | plugin | Trimmed always-loaded descriptions | planned |
+| W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | done in this repo, unreleased |
+| W2286 | G454 | plugin | Trimmed always-loaded descriptions | planned (the agent description trim landed with W2285) |
 | W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | planned (claim last) |
 
 The "Where it lands" column decides who ports what:
@@ -391,7 +391,7 @@ sub-step together. Porting one side alone leaves considerations unassessed.
 
 Keep the variable name `SECURITY_RESULT_PATH` identical everywhere.
 
-### W2285 — core prompt plus packs (planned; after W2274)
+### W2285 — core prompt plus packs (done in this repo, unreleased)
 
 **Planned change.**
 - A core of about 12–15 KB: methodology, classes, noise filter, schema, severity
@@ -406,6 +406,29 @@ and how that runtime resolves a path relative to the plugin: the
 exploratory-testing review found that path does not resolve from the project
 directory in Claude Code. Gate each variant's split on its own eval where one
 exists. Where none exists, record that the split shipped unevaluated.
+
+**What landed (Claude Code).**
+- `agents/security-reviewer.md` is a 15,352-byte core. The eleven packs sit in
+  `packs/` and three mode files (`considerations`, `result-file`,
+  `reproduction`) in `modes/`, both at the plugin root.
+- They are not under `agents/packs/` as planned: Claude Code registers every
+  `.md` below `agents/` as an agent, so a pack there showed up as a dispatchable
+  `<plugin>:packs:<name>` agent. Check each runtime's agent loader the same way
+  before choosing the directory.
+- The core reads each file from `${CLAUDE_PLUGIN_ROOT}/<dir>/<name>.md`. Claude
+  Code substitutes the variable into the agent body both when the agent is the
+  session agent (`claude -p --plugin-dir … --agent …`) and when it is dispatched
+  through the `Agent` tool; both were checked live on Claude Code 2.1.296.
+- Pack choice comes only from the reviewed files' extensions, paths, structure
+  and imports. An unreadable file means the core rules alone, never no review; a
+  result file is never written and nothing is ever run without its mode file.
+- The MAESTRO table and mapping and the patch rules moved into the command's
+  "Opt-in directive blocks". The agent keeps a one-line gate for `maestro_layer`,
+  `patch` and `summary.rci_passes`.
+- The agent description was trimmed from 2,557 to 291 bytes here, which W2286 had
+  planned; W2286 still owns the skill description and the variants.
+- A tool-less eval run now scores the core without packs. The pack-loading arm
+  needs `Read` scoped to the plugin copy (README, "Running the eval locally").
 
 ### W2286 — trimmed descriptions (planned)
 

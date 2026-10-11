@@ -64,7 +64,7 @@ The plugin supports two scan modes — pick the one that matches the question yo
 
 ## What the agent does
 
-The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin) receives the diff and returns a JSON document with one finding per vulnerability. Vulnerability classes covered: injection, authentication, authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, insecure configuration, supply chain. For codebases that wire LLMs / AI agents / Model Context Protocol clients into the request flow, five additional MAESTRO-derived classes activate: prompt injection, tool abuse, agent trust boundary, model output execution, vector store poisoning. The agentic classes activate only when the file imports an LLM/agent/MCP SDK — see the "Agentic vulnerability classes" section in the agent prompt for the per-language detection signals.
+The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin — a ~15 KB core that reads its framework, supply-chain, CI/CD and agentic rule packs from `packs/`, and its considerations, result-file and reproduction rules from `modes/`, only when the input needs them) receives the diff and returns a JSON document with one finding per vulnerability. Vulnerability classes covered: injection, authentication, authorization, data exposure, cryptography, input validation, race conditions, XSS/code execution, insecure configuration, supply chain. For codebases that wire LLMs / AI agents / Model Context Protocol clients into the request flow, five additional MAESTRO-derived classes activate: prompt injection, tool abuse, agent trust boundary, model output execution, vector store poisoning. The agentic classes activate only when the file imports an LLM/agent/MCP SDK — see `packs/agentic.md` (the agentic rule pack) for the per-language detection signals.
 
 The agent operates on **semantic analysis, not pattern matching**. A `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. This is the agent's distinguishing property versus a static analyzer.
 
@@ -112,7 +112,7 @@ The command's current flag surface, one line per flag — parsing and full seman
 Two further customization knobs:
 
 1. **Scope by path.** Pass paths as arguments to scope the review to a subset of changed files. Useful for monorepos where one team's diff doesn't need review by another team's security baseline.
-2. **Extend the agent prompt.** Fork or patch `agents/security-reviewer.md` to add organization-specific vulnerability classes or to tighten/loosen the false-positive filter. The output schema is the contract — keep that stable so downstream tooling continues to parse correctly.
+2. **Extend the agent prompt.** Fork or patch `agents/security-reviewer.md` to add organization-specific vulnerability classes or to tighten/loosen the false-positive filter, or add a rule pack under `packs/`. The output schema is the contract — keep that stable so downstream tooling continues to parse correctly.
 
 ## Composing with other workflows
 
@@ -120,7 +120,7 @@ The `--json` flag makes the command pipeable. Other plugins (e.g., a Stride comp
 
 ## What this skill does NOT cover
 
-- The actual analysis methodology (in `agents/security-reviewer.md`).
+- The actual analysis methodology (in `agents/security-reviewer.md`, with its rule packs in `packs/` and mode rules in `modes/`).
 - The command pipeline (in `commands/security-review.md`).
 - Output rendering details (in the same command file).
 
