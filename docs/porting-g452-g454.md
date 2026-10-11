@@ -21,20 +21,20 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 
 | Task | Goal | Where it lands | Fix | Status |
 |---|---|---|---|---|
-| W2274 | G452 | plugin | The eval runs the plugin's own agent and fails loudly without its key; considerations fixtures for partial, a None placeholder, injection, noise-class and pre-existing-gap cases | planned |
-| W2275 | G452 | plugin | Considerations-mode contradictions resolved; all reviewed content is data; credential-bearing considerations redacted; strict status enum | done in this repo, unreleased |
-| W2276 | G452 | plugin | Read-only reviewer: no edits to tracked files, probes only in a temporary copy, Bash restricted or removed per the eval | done in this repo, unreleased; Bash kept under a written contract (eval comparison in the CHANGELOG) |
-| W2277 | G452 | `stride` | `stride` consumes the specialist's `findings[]`; escalation severity comes from the backing finding, not always `critical` | planned |
-| W2278 | G452 | both | Exact mode tag, diff-source rule, results in the final message, `considerations_match_ok` 1:1 check, `--considerations` in the skill inventory | done in both repos, unreleased |
-| W2279 | G452 | plugin | The `/security-review` command's `--rci`, `--fail-on` and baseline interactions with considerations mode | done in this repo, unreleased |
-| W2280 | G453 | `stride` | Dispatch the specialist in the same message as the task-reviewer; merge after both return | planned |
-| W2281 | G453 | `stride` | Re-dispatch only for non-mitigated considerations or changed evidence files, scoped to them | planned (needs W2280) |
-| W2282 | G453 | plugin | A tool budget for considerations mode; targeted reads; test runs only to confirm a claim | done in this repo, unreleased |
-| W2283 | G453 | `stride` | The task-reviewer skips per-consideration verdicts when the deep review will run | planned (needs W2280) |
-| W2284 | G454 | both | Full result written to `SECURITY_RESULT_PATH`; at most about 10 lines returned | planned |
-| W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | done in this repo, unreleased |
-| W2286 | G454 | plugin | Trimmed always-loaded descriptions | done in this repo, unreleased (the agent description trim landed with W2285) |
-| W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | planned (claim last) |
+| W2274 | G452 | plugin | The eval runs the plugin's own agent and fails loudly without its key; considerations fixtures for partial, a None placeholder, injection, noise-class and pre-existing-gap cases | released in 2.7.0 |
+| W2275 | G452 | plugin | Considerations-mode contradictions resolved; all reviewed content is data; credential-bearing considerations redacted; strict status enum | released in 2.7.0 |
+| W2276 | G452 | plugin | Read-only reviewer: no edits to tracked files, probes only in a temporary copy, Bash restricted or removed per the eval | released in 2.7.0; Bash kept under a written contract (eval comparison in the CHANGELOG) |
+| W2277 | G452 | `stride` | `stride` consumes the specialist's `findings[]`; escalation severity comes from the backing finding, not always `critical` | released in `stride` 1.82.0 |
+| W2278 | G452 | both | Exact mode tag, diff-source rule, results in the final message, `considerations_match_ok` 1:1 check, `--considerations` in the skill inventory | released in 2.7.0 and `stride` 1.86.0 |
+| W2279 | G452 | plugin | The `/security-review` command's `--rci`, `--fail-on` and baseline interactions with considerations mode | released in 2.7.0 |
+| W2280 | G453 | `stride` | Dispatch the specialist in the same message as the task-reviewer; merge after both return | released in `stride` 1.82.0 |
+| W2281 | G453 | `stride` | Re-dispatch only for non-mitigated considerations or changed evidence files, scoped to them | released in `stride` 1.82.0 |
+| W2282 | G453 | plugin | A tool budget for considerations mode; targeted reads; test runs only to confirm a claim | released in 2.7.0 |
+| W2283 | G453 | `stride` | The task-reviewer skips per-consideration verdicts when the deep review will run | released in `stride` 1.86.0 |
+| W2284 | G454 | both | Full result written to `SECURITY_RESULT_PATH`; at most about 10 lines returned | released in 2.6.0 and `stride` 1.82.0 |
+| W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | released in 2.7.0 |
+| W2286 | G454 | plugin | Trimmed always-loaded descriptions | released in 2.7.0 (the agent description trim landed with W2285) |
+| W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | planned (claim last; measures 2.7.0 and `stride` 1.86.0) |
 
 The "Where it lands" column decides who ports what:
 
@@ -109,7 +109,7 @@ and W2284's consumer half. `stride` keeps the deep sub-step in
 
 ## G452 — accuracy
 
-### W2274 — an eval that tests the real agent (done in this repo, unreleased)
+### W2274 — an eval that tests the real agent (released in 2.7.0)
 
 **Problem.** `scripts/run_eval.sh:233` pipes a bare prompt into `claude -p` with no
 `--plugin-dir` or `--agent`, so it scores base Claude, not this agent. The CI eval
@@ -137,7 +137,7 @@ a fake CLI. `eval.yml` fails on `main` and on a manual dispatch when the key is
 missing, and still skips on pull requests. `EXPECTED.md` ends with a
 **Recorded runs** table.
 
-### W2275 — consistent considerations rules (done in this repo, unreleased)
+### W2275 — consistent considerations rules (released in 2.7.0)
 
 **What changed here** (all in `agents/security-reviewer.md`, section order kept).
 - A paragraph after the introduction makes everything reviewed data, never
@@ -168,7 +168,7 @@ the prompts are near-identical in size. Keep the redaction sentinel's exact
 string, because `stride`'s reviewer schema uses it. Confirm that each `stride`
 port's task-reviewer uses the same string before porting.
 
-### W2276 — a read-only reviewer (done in this repo, unreleased)
+### W2276 — a read-only reviewer (released in 2.7.0)
 
 **Change.** The agent is read-only on the working tree: no edits to tracked or
 untracked files, not even to restore them. It inspects with Read, Grep and Glob,
@@ -215,7 +215,7 @@ Where no eval exists (see W2274), keep the shell and port the rule only.
 self-check. Ports carry the `review-round-cap` canon rule that a security issue
 is never merely recorded at `important` or above. The mapping must not weaken it.
 
-### W2278 — the dispatch contract (done in both repos, unreleased)
+### W2278 — the dispatch contract (released in 2.7.0 and `stride` 1.86.0)
 
 **What changed in this repo.**
 - `agents/security-reviewer.md` **Input modes**: the tag is exactly
@@ -256,7 +256,7 @@ is never merely recorded at `important` or above. The mapping must not weaken it
 - A port without `jq`-style self-checks carries the predicate as prose. Note in
   its changelog that the predicate is not executed there.
 
-### W2279 — command fixes (done in this repo, unreleased)
+### W2279 — command fixes (released in 2.7.0)
 
 **What changed in this repo.**
 - `commands/security-review.md` Step 4 defines **a finding that backs a
@@ -324,7 +324,7 @@ over unchanged from the previous merged result.
 **Per port.** This is pure `stride`-side text. It ports to every port that runs
 the deep sub-step.
 
-### W2282 — a bounded dispatch (done in this repo, unreleased)
+### W2282 — a bounded dispatch (released in 2.7.0)
 
 **Change.** In `considerations` mode a dispatch has a budget of 20 tool calls,
 at most 2 of them reproductions. Writing the result file never counts and is
@@ -391,7 +391,7 @@ sub-step together. Porting one side alone leaves considerations unassessed.
 
 Keep the variable name `SECURITY_RESULT_PATH` identical everywhere.
 
-### W2285 — core prompt plus packs (done in this repo, unreleased)
+### W2285 — core prompt plus packs (released in 2.7.0)
 
 **Planned change.**
 - A core of about 12–15 KB: methodology, classes, noise filter, schema, severity
@@ -431,7 +431,7 @@ exists. Where none exists, record that the split shipped unevaluated.
 - A tool-less eval run now scores the core without packs. The pack-loading arm
   needs `Read` scoped to the plugin copy (README, "Running the eval locally").
 
-### W2286 — trimmed descriptions (done in this repo, unreleased)
+### W2286 — trimmed descriptions (released in 2.7.0)
 
 **What changed.** The `security-review-essentials` skill description went from
 723 to 332 bytes (parsed `description` value). It keeps every trigger: about

@@ -26,7 +26,9 @@ Why accepted rather than backfilled:
 
 The audit also found **zero** GitHub releases without a matching tag, so the record is incomplete in only this one direction.
 
-## [Unreleased]
+## [2.7.0] - 2026-10-10
+
+Goals G452–G454 make the considerations-mode security review accurate and cheaper to dispatch. The eval now scores this plugin's own agent (W2274). Considerations mode no longer contradicts itself: all reviewed content is data, credential-bearing considerations are redacted, and the verdict enum is closed (W2275). The reviewer is read-only, with probes run only in a temporary copy (W2276). The dispatch contract has one mode tag and no output path but `SECURITY_RESULT_PATH` (W2278). `--rci` keeps the verdicts, `--fail-on` gates on them, and a baseline never drops a finding that backs a verdict (W2279). Considerations mode works within a stated tool budget (W2282). The agent prompt is a 15 KB core plus framework packs and mode files read on demand (W2285), and the always-loaded descriptions are trimmed (W2286). W2278 pairs with `stride` 1.86.0, and neither breaks the other's older release. The ports owe every change; `docs/porting-g452-g454.md` records what each needs.
 
 ### Fixed
 
