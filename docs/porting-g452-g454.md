@@ -33,7 +33,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | W2283 | G453 | `stride` | The task-reviewer skips per-consideration verdicts when the deep review will run | planned (needs W2280) |
 | W2284 | G454 | both | Full result written to `SECURITY_RESULT_PATH`; at most about 10 lines returned | planned |
 | W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | done in this repo, unreleased |
-| W2286 | G454 | plugin | Trimmed always-loaded descriptions | planned (the agent description trim landed with W2285) |
+| W2286 | G454 | plugin | Trimmed always-loaded descriptions | done in this repo, unreleased (the agent description trim landed with W2285) |
 | W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | planned (claim last) |
 
 The "Where it lands" column decides who ports what:
@@ -426,18 +426,31 @@ exists. Where none exists, record that the split shipped unevaluated.
   "Opt-in directive blocks". The agent keeps a one-line gate for `maestro_layer`,
   `patch` and `summary.rci_passes`.
 - The agent description was trimmed from 2,557 to 291 bytes here, which W2286 had
-  planned; W2286 still owns the skill description and the variants.
+  planned; W2286 then trimmed the skill description, and the variants are still
+  to port.
 - A tool-less eval run now scores the core without packs. The pack-loading arm
   needs `Read` scoped to the plugin copy (README, "Running the eval locally").
 
-### W2286 — trimmed descriptions (planned)
+### W2286 — trimmed descriptions (done in this repo, unreleased)
 
-**Planned change.** The agent description goes from about 2.4 KB to about 400
-bytes, and the skill description shrinks to match, keeping the triggering
-conditions.
+**What changed.** The `security-review-essentials` skill description went from
+723 to 332 bytes (parsed `description` value). It keeps every trigger: about
+to merge, or push a PR with, changes touching authentication, authorization,
+cryptography, user input handling, secrets management, database queries,
+shell-outs, file uploads, redirects or response rendering, or a human reviewer
+asking for a security check. It drops the output format, the severity list and
+the noise-filter summary, which the skill body and the agent already state. The
+agent description, cut by W2285 (2,555 to 289 bytes parsed; the 2,557 and 291
+above count the `description:` block with `wc -c`), now opens "Use this agent
+to security-review …" like the `stride` agents, got back the one trigger that
+cut lost, reviewing before merge, and is 286 bytes parsed. The agent file stays
+inside the 15,360-byte core bound that `check_agent_contract.sh` enforces, at
+15,349 bytes. That script now also checks both frontmatters' shape and keys,
+bounds each description at 150–400 bytes, and pins each one's triggers.
 
-**Per variant.** Trim each variant's agent and skill frontmatter. On codex, the
-`stride-security-review` command-skill's description is always loaded too.
+**Per variant.** Trim each variant's agent and skill frontmatter the same way,
+keeping the same triggers. On codex, the `stride-security-review` command-skill's
+description is always loaded too.
 
 ### W2287 — measurement (planned; last)
 

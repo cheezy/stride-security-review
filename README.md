@@ -276,7 +276,7 @@ Two customization knobs:
 1. **Scope by path.** Pass paths as arguments to limit the review to a subset of changed files (diff mode) or tracked files (full mode). Useful in monorepos. Composable with both modes.
 2. **Extend the agent prompt.** Fork or patch [`agents/security-reviewer.md`](agents/security-reviewer.md) to add organization-specific vulnerability classes or to tighten/loosen the false-positive filter, or add or edit a rule pack in [`packs/`](packs/) (see [How rule packs load](#how-rule-packs-load)). **Keep the output schema stable** so downstream tooling continues to parse correctly.
 
-The skill at [`skills/security-review-essentials/SKILL.md`](skills/security-review-essentials/SKILL.md) documents the *surface*; the agent prompt documents the *behavior*. Customize the agent prompt for behavior changes; customize the skill description for trigger-phrase tuning.
+The skill at [`skills/security-review-essentials/SKILL.md`](skills/security-review-essentials/SKILL.md) documents the *surface*; the agent prompt documents the *behavior*. Customize the agent prompt for behavior changes; customize the skill description for trigger-phrase tuning. Both descriptions are loaded into every session, so `scripts/check_agent_contract.sh` bounds each at 150–400 bytes and pins its trigger phrases; a deliberate trigger change updates its pin there too.
 
 ## Composing with other plugins
 

@@ -1,6 +1,6 @@
 ---
 name: security-review-essentials
-description: Use when about to merge code changes that touch security-sensitive surfaces — authentication, authorization, cryptography, user input handling, secrets management, database queries, shell-outs, file uploads, redirects, or response rendering. Also use before pushing a PR that modifies any of the above, or when a human reviewer asks for a security check. Surfaces the /security-review slash command and the security-reviewer agent. Findings are structured JSON grouped by severity (critical / high / medium / low / info) with semantic — not pattern-match — analysis. Low-impact noise (denial-of-service, rate-limiting, memory-exhaustion) is intentionally filtered out unless it intersects another vulnerability class.
+description: Use when about to merge or push a PR with changes touching authentication, authorization, cryptography, user input handling, secrets management, database queries, shell-outs, file uploads, redirects or response rendering, or when a human reviewer asks for a security check. Surfaces /security-review and the security-reviewer agent.
 skills_version: 1.0
 ---
 

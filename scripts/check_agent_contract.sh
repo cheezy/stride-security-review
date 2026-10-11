@@ -2,7 +2,8 @@
 # Text pins on agents/security-reviewer.md's SECURITY_RESULT_PATH contract (W2284),
 # its considerations-mode rules (W2275), its read-only tool contract (W2276) and
 # its one mode-tag spelling (W2278) and its considerations-mode tool budget
-# (W2282), plus the tag and flag in the command and skill.
+# (W2282), plus the tag and flag in the command and skill, and the shape,
+# size and triggers of the agent and skill frontmatter (W2286).
 # The agent's behaviour is a prose contract read by a model, so the cheapest
 # regression guard is that the load-bearing sentences are still there. Each
 # needle is a fixed string; a reworded rule must update its pin deliberately.
@@ -226,6 +227,92 @@ else
   fail=1
 fi
 pin "the rule names the frontmatter tools"   "\`${tools_line#tools: }\` is your whole tool list"
+
+# W2286: the agent and skill descriptions are loaded into every session, so
+# each is bounded at 150-400 bytes; each frontmatter must still have the shape
+# YAML reads, with its keys; and each description keeps its triggers, pinned in
+# the description itself, so a later trim cannot drop one silently.
+frontmatter() { # $1=file -> the lines between the opening and closing --- fences
+  awk 'NR == 1 { if ($0 != "---") exit 1; next } /^---$/ { c = 1; exit } { print } END { exit !c }' "$1"
+}
+description_of() { # $1=file -> the description text (a plain scalar or a | block)
+  frontmatter "$1" | awk '
+    /^description: *\|$/ { b = 1; next }
+    b && /^  / { sub(/^  /, ""); print; next }
+    b { exit }
+    /^description: / { sub(/^description: /, ""); print; exit }'
+}
+check_frontmatter() { # $1=file $2=label $3=required keys, space-separated
+  local fm bad k
+  if ! fm="$(frontmatter "$1")"; then
+    echo "FAIL: $2 frontmatter -- no closing --- fence"; fail=1; return
+  fi
+  # Each line is a top-level `key: value`, a `key: |` block, or a line indented
+  # under that block; a plain value must not hold ': ', ' #' or a leading YAML
+  # indicator, which would change or break how YAML reads it.
+  bad="$(printf '%s\n' "$fm" | awk '
+    /^[a-z_]+: *\|$/ { blk = 1; if (seen[$1]++) print "duplicate key " $1; next }
+    blk && /^  [^ ]/ { next }
+    /^[a-z_]+:( |$)/ { blk = 0; if (seen[$1]++) print "duplicate key " $1
+      v = $0; sub(/^[a-z_]+: */, "", v)
+      if (v ~ /: / || v ~ / #/ || v ~ /^[][{}>|*&!%@?:#-]/) print "plain value YAML would misread: " $1
+      next }
+    { print "not a key or block line: " substr($0, 1, 40) }')"
+  if [ -n "$bad" ]; then
+    echo "FAIL: $2 frontmatter -- $bad"; fail=1
+  else
+    echo "ok: $2 frontmatter has the shape YAML reads"
+  fi
+  for k in $3; do
+    if printf '%s\n' "$fm" | grep -q "^$k:"; then
+      echo "ok: $2 frontmatter has $k"
+    else
+      echo "FAIL: $2 frontmatter -- missing key $k"; fail=1
+    fi
+  done
+}
+check_description() { # $1=file $2=label
+  local n
+  n="$(description_of "$1" | tr -d '\n' | wc -c | tr -d ' ')"
+  if [ "$n" -ge 150 ] && [ "$n" -le 400 ]; then
+    echo "ok: the $2 description is $n bytes (150-400)"
+  else
+    echo "FAIL: the $2 description is $n bytes, outside 150-400"; fail=1
+  fi
+}
+desc_pin() { # $1=file $2=label $3=fixed-string needle that must be in the description
+  if description_of "$1" | grep -qF -- "$3"; then
+    echo "ok: $2"
+  else
+    echo "FAIL: $2 -- missing from the description: $3"; fail=1
+  fi
+}
+check_frontmatter "$AGENT" "the agent" "name description model tools"
+check_frontmatter "$SKILL" "the skill" "name description"
+fm_line() { # $1=file $2=label $3=exact frontmatter line
+  if frontmatter "$1" | grep -qxF -- "$3"; then
+    echo "ok: $2"
+  else
+    echo "FAIL: $2 -- no frontmatter line: $3"; fail=1
+  fi
+}
+fm_line "$AGENT" "the agent keeps the name Stride dispatches" 'name: security-reviewer'
+fm_line "$SKILL" "the skill keeps its name" 'name: security-review-essentials'
+check_description "$AGENT" "agent"
+check_description "$SKILL" "skill"
+desc_pin "$AGENT" "the agent description says when to use it" 'Use this agent to security-review'
+desc_pin "$AGENT" "the agent description names its three inputs" "a diff, whole files, or a diff plus a task's security_considerations"
+desc_pin "$AGENT" "the agent description says it gates a merge" 'before merge'
+desc_pin "$AGENT" "the agent description names its command" '/stride-security-review:security-review'
+desc_pin "$AGENT" "the agent description names Stride" 'and Stride.'
+desc_pin "$SKILL" "the skill description fires before a merge or PR" 'Use when about to merge or push a PR'
+for surface in authentication authorization cryptography 'user input handling' 'secrets management' \
+  'database queries' shell-outs 'file uploads' redirects 'response rendering'; do
+  desc_pin "$SKILL" "the skill description names $surface" "$surface"
+done
+desc_pin "$SKILL" "the skill description fires on a reviewer's request" 'when a human reviewer asks for a security check'
+desc_pin "$SKILL" "the skill description names the command" '/security-review'
+desc_pin "$SKILL" "the skill description names the agent" 'security-reviewer agent'
 
 if [ "$fail" -ne 0 ]; then
   echo "agent contract: FAILED"

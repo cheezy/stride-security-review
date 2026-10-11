@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: |
-  Security review of a diff, whole files, or a diff plus a task's security_considerations (one verdict each): JSON findings for injection, auth, data exposure, crypto, input validation, XSS, config, supply chain and agentic risks. Used by /stride-security-review:security-review and Stride.
+  Use this agent to security-review a diff, whole files, or a diff plus a task's security_considerations before merge. JSON findings: injection, auth, data exposure, crypto, input validation, XSS, config, supply chain, agentic. Used by /stride-security-review:security-review and Stride.
 model: inherit
 tools: Read, Grep, Glob, Bash
 ---
