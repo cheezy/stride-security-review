@@ -34,7 +34,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | W2284 | G454 | both | Full result written to `SECURITY_RESULT_PATH`; at most about 10 lines returned | released in 2.6.0 and `stride` 1.82.0 |
 | W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | released in 2.7.0 |
 | W2286 | G454 | plugin | Trimmed always-loaded descriptions | released in 2.7.0 (the agent description trim landed with W2285) |
-| W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | planned (claim last; measures 2.7.0 and `stride` 1.86.0) |
+| W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | landed: [`measurement-2026-10.md`](measurement-2026-10.md); a report only, nothing to release or port |
 
 The "Where it lands" column decides who ports what:
 
@@ -452,11 +452,17 @@ bounds each description at 150–400 bytes, and pins each one's triggers.
 keeping the same triggers. On codex, the `stride-security-review` command-skill's
 description is always loaded too.
 
-### W2287 — measurement (planned; last)
+### W2287 — measurement (landed)
 
-Measure at least ten deep-review dispatches against the baseline above, naming
-the comparator for every figure. A variant's measurement needs that runtime's own
-transcripts.
+Measured on 2026-10-14 in [`measurement-2026-10.md`](measurement-2026-10.md),
+with the script [`scripts/w2287-deep-review.py`](scripts/w2287-deep-review.py).
+It covers 30 dispatches on 2.7.0 and `stride` 1.86.0, compared with the kanban
+dispatches that survive from the baseline and with the 2.6.0 era between them.
+The report reproduces the baseline on the 134 of its 257 transcripts that still
+exist before using the script on new data. It also records the metrics that did
+not improve, and the fall in partial verdicts and findings, which the eval
+should settle. A variant's measurement needs that runtime's own transcripts;
+the script reads Claude Code's only.
 
 ---
 
