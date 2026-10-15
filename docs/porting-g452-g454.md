@@ -15,7 +15,8 @@ for each fix, what changes, why, and what each variant needs to carry it.
 **Port from landed fixes only.** When a task lands here, change its status below
 to *landed* and replace its "Planned change" paragraph with what actually
 shipped, including the commit and the release. A planned section describes
-intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
+intent, not shipped behaviour. All of the G452–G454 tasks were *planned* on
+2026-10-02; D376, a defect in the W2276 block, was added on 2026-10-15.
 
 ## Status
 
@@ -35,6 +36,7 @@ intent, not shipped behaviour. All of these tasks were *planned* on 2026-10-02.
 | W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | released in 2.7.0 |
 | W2286 | G454 | plugin | Trimmed always-loaded descriptions | released in 2.7.0 (the agent description trim landed with W2285) |
 | W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | landed: [`measurement-2026-10.md`](measurement-2026-10.md); a report only, nothing to release or port |
+| D376 | — (follows W2276) | plugin | The W2276 probe sandbox hides the home directory, refuses a copy under it, and runs nothing native from the copy | landed, unreleased |
 
 The "Where it lands" column decides who ports what:
 
@@ -200,6 +202,44 @@ Check empirically whether a runtime can scope its shell tool before relying on
 it; Claude Code could not. opencode's `edit: false` still leaves its shell able
 to write, so the written rule is needed there too.
 Where no eval exists (see W2274), keep the shell and port the rule only.
+
+**D376 changed this block after 2.7.0** — re-copy it from the section below, not
+from a 2.7.0 port.
+
+### D376 — a confined probe sandbox (landed, unreleased)
+
+**Change.** The W2276 probe command in `modes/reproduction.md` confined writes
+and network access but not reads, so a snippet could read the home directory
+and print a key or credential into the result. On Linux a pathname socket
+under the home directory stayed connectable, and on macOS the deny-list on
+`open`, `launchctl` and `osascript` could be bypassed by copying a binary into
+the writable copy and running it. The block now:
+
+- refuses to run, grading by reading, when `HOME` is unset, relative, `/` or
+  not a directory, when it or the copy has a quote, backslash or newline in
+  its path, when it is not the account's home directory (looked up with
+  `getent`, else `dscl`; skipped when neither answers), or when the copy
+  resolves under it;
+- on macOS adds `(deny process-exec (subpath "$r"))`,
+  `(deny file-map-executable (subpath "$r"))`,
+  `(deny file-read* (subpath "$h"))` and `(deny job-creation)`, keeping every
+  earlier denial;
+- on Linux adds `--tmpfs /var/tmp --tmpfs "$h"` after `--tmpfs /tmp`, before the
+  copy's `--bind`, keeping every earlier flag.
+
+The paragraph after the block states what each system denies, that a script in
+the copy runs through its interpreter (`sh test.sh`), and that the rest of the
+filesystem stays readable, as do, on macOS, the arguments and environment of
+the user's other processes, so the CI and untrusted-contributor rule still
+holds. On macOS a hard link or a `cp` from a file under the home directory
+into the copy is refused, and a symbolic link to one cannot be read through.
+`scripts/check_agent_contract.sh` pins every changed line.
+
+**Per variant.** Re-copy the whole fenced block and the paragraph after it.
+The strings ports key on are unchanged: `stride-security-probe.XXXXXX`, the
+`CI` and no-sandbox lines, and `box env -i PATH=`. Every variant that ports
+W2276 owes this change, including opencode, whose W2373 port copied the 2.7.0
+block byte-identical.
 
 ### W2277 — `stride` consumes findings (planned; `stride`-side)
 

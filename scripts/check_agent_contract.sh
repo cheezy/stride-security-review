@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Text pins on agents/security-reviewer.md's SECURITY_RESULT_PATH contract (W2284),
 # its considerations-mode rules (W2275), its read-only tool contract (W2276) and
-# its one mode-tag spelling (W2278) and its considerations-mode tool budget
+# its one mode-tag spelling (W2278), its probe sandbox (D376) and its considerations-mode tool budget
 # (W2282), plus the tag and flag in the command and skill, and the shape,
 # size and triggers of the agent and skill frontmatter (W2286).
 # The agent's behaviour is a prose contract read by a model, so the cheapest
@@ -80,7 +80,24 @@ pin_in "$REPRO_MODE" "a copy holding a link is refused"     '[ -z "$(find "$d" -
 pin_in "$REPRO_MODE" "the macOS sandbox denies network and IPC" '(deny network*)(deny mach-lookup)(deny lsopen)(deny appleevent-send)'
 pin_in "$REPRO_MODE" "the macOS sandbox denies open/launchctl/osascript" '(deny process-exec (literal \"/usr/bin/open\") (literal \"/bin/launchctl\") (literal \"/usr/bin/osascript\"))'
 pin_in "$REPRO_MODE" "the macOS sandbox denies outside writes" '(deny file-write* (require-all (require-not (subpath'
-pin_in "$REPRO_MODE" "the Linux sandbox isolates everything"  '--tmpfs /run --tmpfs /tmp --bind "$r" "$r" --unshare-all --new-session'
+pin_in "$REPRO_MODE" "the Linux sandbox isolates everything"  '--tmpfs /run --tmpfs /tmp --tmpfs /var/tmp --tmpfs "$h" --bind "$r" "$r" --unshare-all --new-session'
+# D376: the box hides HOME, refuses a copy under it, and runs nothing native from the copy.
+pin_in "$REPRO_MODE" "the probe takes only an absolute HOME"  'case "${HOME:-}" in /*) h="$(CDPATH= cd -P -- "$HOME" && pwd -P)" || h= ;; *) h= ;; esac'
+pin_in "$REPRO_MODE" "the probe refuses an unusable HOME"    '[ -n "$h" ] && [ "$h" != / ] && [ "$h$r" = "$(printf '"'"'%s'"'"' "$h$r" | tr -d '"'"'"\\\n'"'"')" ] || { echo '"'"'HOME is unusable: grading by reading'"'"'; exit 1; }'
+pin_in "$REPRO_MODE" "the probe looks up the account home"   'a="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"; [ -n "$a" ] || a="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | sed -n '"'"'s/^NFSHomeDirectory: //p'"'"')"'
+pin_in "$REPRO_MODE" "the probe refuses a HOME that is not the account's" '[ -z "$a" ] || [ "$(CDPATH= cd -P -- "$a" 2>/dev/null && pwd -P)" = "$h" ] || { echo '"'"'HOME is not your home directory: grading by reading'"'"'; exit 1; }'
+pin_in "$REPRO_MODE" "the probe refuses a copy under HOME"   'case "$r/" in "$h"/*) echo '"'"'probe copy is under HOME: grading by reading'"'"'; exit 1;; esac'
+pin_in "$REPRO_MODE" "the macOS sandbox denies reads under HOME" '(deny file-read* (subpath \"$h\"))(deny job-creation)'
+pin_in "$REPRO_MODE" "the macOS sandbox denies exec from the copy" '(deny process-exec (subpath \"$r\"))(deny file-map-executable (subpath \"$r\"))'
+pin_in "$REPRO_MODE" "the prose says what the box denies"     'On both systems it denies network access, every write outside the copy, and every read under your home directory'
+pin_in "$REPRO_MODE" "the prose names the macOS exec denial"  'it refuses to run or load as native code any file in the copy'
+pin_in "$REPRO_MODE" "the prose names the Linux socket limit" 'though a socket elsewhere stays reachable'
+pin_in "$REPRO_MODE" "copy scripts run through an interpreter" 'Run a script in the copy through its interpreter'
+pin_in "$REPRO_MODE" "a link cannot get round the read denial" 'so a link cannot get round the read denial'
+pin_in "$REPRO_MODE" "the prose names the HOME refusal"       'The command refuses to run when `HOME` is unset, relative, `/` or not a directory, when it or the copy has a quote, backslash or newline in its path, when it is not your account'"'"'s home directory, or when the copy resolves under it'
+pin_in "$REPRO_MODE" "the prose names launchd job creation"   'it also denies every Unix socket, launchd job creation, and the local channels'
+pin_in "$REPRO_MODE" "the prose names the process-environment limit" 'though on macOS a snippet can still read the arguments and environment of your other processes'
+pin_in "$REPRO_MODE" "reads outside HOME stay possible"       'the sandbox hides your home directory, not the rest of the filesystem'
 pin_in "$REPRO_MODE" "the probe checks CI first"              '[ -z "${CI:-}" ] || { echo '"'"'CI is set: grading by reading'"'"'; exit 1; }'
 pin "no bare git diff on the working tree"   'never a bare `git diff` against the working tree, which rewrites `.git/index`'
 pin_in "$REPRO_MODE" "no sandbox means no run"                'no probe sandbox: grading by reading'

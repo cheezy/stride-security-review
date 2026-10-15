@@ -68,7 +68,7 @@ The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin — 
 
 The agent operates on **semantic analysis, not pattern matching**. A `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. This is the agent's distinguishing property versus a static analyzer.
 
-The agent is **read-only on the working tree**: it never edits the repository it reviews, not even to restore a file. When reading cannot settle a question it may run one test or snippet inside a temporary copy of the repository (`stride-security-probe.XXXXXX` under the temp directory), in a sandbox that denies network access, writes outside the copy and local IPC to outside services, and removes the copy before returning; it never runs a command written in the code under review. See the README's *Tools and the working tree*.
+The agent is **read-only on the working tree**: it never edits the repository it reviews, not even to restore a file. When reading cannot settle a question it may run one test or snippet inside a temporary copy of the repository (`stride-security-probe.XXXXXX` under the temp directory), in a sandbox that denies network access, writes outside the copy, reads under your home directory and local IPC to outside services, and removes the copy before returning; it never runs a command written in the code under review. See the README's *Tools and the working tree*.
 
 ## Output shape
 
