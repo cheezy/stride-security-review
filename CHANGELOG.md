@@ -26,13 +26,17 @@ Why accepted rather than backfilled:
 
 The audit also found **zero** GitHub releases without a matching tag, so the record is incomplete in only this one direction.
 
-## [Unreleased]
+## [2.7.1] - 2026-10-15
 
-D376 confines the reproduction probe's sandbox, which W2276 introduced in 2.7.0. The ports owe the change; `docs/porting-g452-g454.md` records it.
+D376 confines the reproduction probe's sandbox, which W2276 introduced in 2.7.0. The ports owe the change; `docs/porting-g452-g454.md` records it. The release also carries W2287's measurement of the deep review against the 2026-10-02 baseline.
 
 ### Fixed
 
 - **The probe sandbox no longer lets a snippet read your home directory or run code from the copy (D376).** The probe command in `modes/reproduction.md` denied writes and network access but not reads, so a snippet drawn from an untrusted diff could read `~/.ssh`, cloud credentials or a keychain and print them into the result. On macOS the deny-list on `open`, `launchctl` and `osascript` could be bypassed by copying a binary into the writable copy and running it, and on Linux a pathname Unix socket under the home directory stayed connectable. The command now refuses to run, grading by reading, when `HOME` is unset, relative, `/`, not a directory or not the account's home directory, when it or the copy has a quote, backslash or newline in its path, or when the copy resolves under it. On macOS the profile adds `(deny file-read* (subpath "$h"))`, `(deny process-exec (subpath "$r"))`, `(deny file-map-executable (subpath "$r"))` and `(deny job-creation)`; on Linux `bwrap` adds `--tmpfs /var/tmp --tmpfs "$h"`. Every earlier denial and flag stays. The paragraph after the command now says exactly what each system denies, that a script in the copy runs through its interpreter (`sh test.sh`, never `./test.sh`), and that the rest of the filesystem stays readable, as do, on macOS, the arguments and environment of your other processes, which is why the CI and untrusted-contributor rule still holds. `scripts/check_agent_contract.sh` pins every changed line, and the README, the essentials skill and the porting guide describe the narrower box. A live check on macOS 27 denied a read under `$HOME`, a hard link or `cp` from a file under `$HOME` into the copy and a read through a symbolic link to one, a copied `/bin/echo`, a copied dylib loaded through `ctypes`, a write outside the copy, a network fetch and a Unix socket connect, while `sh test.sh`, `python3 t.py` and `python3 -c` ran in the copy; a relative, `-`, quoted, missing or non-account `HOME` was refused. launchd already refused a job submitted from inside the sandbox, so `(deny job-creation)` is defence in depth. No Linux host with `bwrap` was available, so the Linux change was verified by reading only.
+
+### Documentation
+
+- **A measurement of the deep review after G452–G454 (W2287).** `docs/measurement-2026-10.md` compares the dispatches made with 2.6.0 and 2.7.0 against the 2026-10-02 baseline, naming the comparator for every figure, and `docs/scripts/w2287-deep-review.py` is the script that produced it. No change to the agent or the command.
 
 ## [2.7.0] - 2026-10-10
 
