@@ -37,9 +37,9 @@ D378, a further defect in that block's macOS profile, on the same day.
 | W2285 | G454 | plugin | A 12–15 KB core prompt plus packs loaded on demand; opt-in sections injected by flag | released in 2.7.0 |
 | W2286 | G454 | plugin | Trimmed always-loaded descriptions | released in 2.7.0 (the agent description trim landed with W2285) |
 | W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | landed: [`measurement-2026-10.md`](measurement-2026-10.md); a report only, nothing to release or port |
-| D376 | — (follows W2276) | plugin | The W2276 probe sandbox hides the home directory, refuses a copy under it, and runs nothing native from the copy | landed, unreleased |
-| D377 | — (follows W2276) | plugin | The agent's git forms and the probe's copy step start no program the reviewed repository's config or attributes name | landed, unreleased |
-| D378 | — (follows W2276) | plugin | The macOS probe sandbox denies signals, process-information calls, task ports and POSIX and System V IPC across its boundary | landed, unreleased |
+| D376 | — (follows W2276) | plugin | The W2276 probe sandbox hides the home directory, refuses a copy under it, and runs nothing native from the copy | released in 2.7.1 |
+| D377 | — (follows W2276) | plugin | The agent's git forms and the probe's copy step start no program the reviewed repository's config or attributes name | released in 2.7.2 |
+| D378 | — (follows W2276) | plugin | The macOS probe sandbox denies signals, process-information calls, task ports and POSIX and System V IPC across its boundary | released in 2.7.2 |
 
 The "Where it lands" column decides who ports what:
 
@@ -284,7 +284,7 @@ Where no eval exists (see W2274), keep the shell and port the rule only.
 **D376 and D378 changed this block after 2.7.0** — re-copy it from the sections
 below, not from a 2.7.0 port.
 
-### D376 — a confined probe sandbox (landed, unreleased)
+### D376 — a confined probe sandbox (released in 2.7.1)
 
 **Change.** The W2276 probe command in `modes/reproduction.md` confined writes
 and network access but not reads, so a snippet could read the home directory
@@ -320,7 +320,7 @@ The strings ports key on are unchanged: `stride-security-probe.XXXXXX`, the
 W2276 owes this change. opencode carries it: its W2373 port (`0742350`) took
 the block with D376 already in it.
 
-### D377 — git runs no repository-configured program (landed, unreleased)
+### D377 — git runs no repository-configured program (released in 2.7.2)
 
 **Change.** The W2276 git forms and the probe's copy step honoured the reviewed
 repository's local config, so a `core.fsmonitor` hook, `diff.external`, a
@@ -371,7 +371,7 @@ has one. The strings ports key on are unchanged: `stride-security-probe.XXXXXX`,
 the `CI` and no-sandbox lines, `box env -i PATH=` and `SECURITY_RESULT_PATH`.
 opencode carries it, ported by W2386 (`2ef9a2d`) into a mode file of its own.
 
-### D378 — signals, IPC and process information stay inside the macOS box (landed, unreleased)
+### D378 — signals, IPC and process information stay inside the macOS box (released in 2.7.2)
 
 **Change.** D376's `sandbox-exec` profile starts from `(allow default)` and
 did not deny signals, POSIX or System V IPC, process-information calls or
@@ -498,7 +498,7 @@ is never merely recorded at `important` or above. The mapping must not weaken it
 - `.github/workflows/security-review.yml` is unchanged: it never passes
   `--considerations`. The README says how to extend its `jq` gate if yours does.
 
-**Two guards from the opencode port (landed, unreleased).** opencode's W2279
+**Two guards from the opencode port (released in 2.7.2).** opencode's W2279
 port, W2375 (`684610c`), added two guards this repo lacked, and both are now
 here:
 - Verdict *i* must answer consideration *i*: its `consideration` is the *i*-th

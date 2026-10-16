@@ -26,7 +26,7 @@ Why accepted rather than backfilled:
 
 The audit also found **zero** GitHub releases without a matching tag, so the record is incomplete in only this one direction.
 
-## [Unreleased]
+## [2.7.2] - 2026-10-16
 
 D377 stops the git commands the security reviewer and its probe run from starting a program the reviewed repository names, and D378 stops a probe snippet on macOS from signalling, inspecting or sharing IPC with your other processes. The OpenCode port already carries both; the other ports owe them, and `docs/porting-g452-g454.md` records which. Two guards the OpenCode port added to W2279's verdict gate come back here: a verdict out of position fails the gate, and the reference transforms refuse input that is not one findings document.
 
