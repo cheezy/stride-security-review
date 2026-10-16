@@ -123,26 +123,64 @@ and W2284's consumer half. `stride` keeps the deep sub-step in
 
 ### The opencode port, as of 2026-10-16
 
-`stride-opencode-security-review` has ported this batch in tasks W2371 to W2380 and W2383.
-None of it is released yet. That repository's `CHANGELOG.md` `[Unreleased]` entry
-names, for each upstream change, the task that ported it and what was adapted.
+`stride-opencode-security-review` has ported this batch in tasks W2371 to W2380,
+W2383, W2386 and W2387. None of it is released yet: its newest tag is still
+`v0.1.1`, and W2389 wrote the `[Unreleased]` notes without a version. That
+repository's `CHANGELOG.md` `[Unreleased]` entry names, for each upstream change,
+the task that ported it and what was adapted. This section was refreshed from
+that repository's git log at `d6cadda`.
 
 - **Ported:** W2274, W2275, W2276 with D376, W2278's plugin half, W2279, W2282,
-  W2284's plugin half, W2285 and W2286. W2383 adds deterministic redaction of the
-  result, which has no upstream counterpart. The agent's result-file write goes
-  through `bash` under the written contract, not through a scoped write permission.
-- **Owed:** D377, tracked as W2386. Upstream raised its core ceiling to 16,384
-  bytes for D377. The opencode core is 15,325 of its 15,360 bytes, so the port has
-  to make room or raise that bound. D378 has no opencode port yet.
+  W2284's plugin half, W2285, W2286, D377 and D378. W2383 adds deterministic
+  redaction of the result, which has no upstream counterpart. The agent's
+  result-file write goes through `bash` under the written contract, not through
+  a scoped write permission.
+  - D377 by W2386 (`2ef9a2d`). The git sentences sit in a new mode file,
+    `modes/git.md`, which the core reads before running any git outside a
+    reproduction. The core stays inside the port's own 15,360-byte bound
+    (15,328 bytes at `d6cadda`) instead of raising it as upstream did.
+  - D378 by W2387 (`21c8507`, with review fixes in `527a76c`). The port's
+    `modes/reproduction.md` matches this repo's except line 5.
+- **Port-only changes since this section's last refresh (`52b8897` in this repo):**
+  - D379 (`485c1fe`) re-reviewed W2378's rules-directory rule. Rule 6 now runs
+    before the batch read and outranks any rule file. A project install's
+    in-repo rules stay a residual that the maintainer accepted.
+  - W2388 (`c8c7c10`) gave D379 its second review round, and fixed the README's
+    integrity check and its untrusted-repository check.
+  - W2389 (`d6cadda`) ran the release check: fresh installs with both
+    installers, live `/security-review` runs on OpenCode 1.16.2, and a full
+    eval. It made both installers refuse an unsafe install path before copying
+    anything. It also filed D380: on OpenCode's default model the reviewer
+    twice ran code outside the probe sandbox, once importing the reviewed
+    module itself. The port's changelog lists that as a known limitation, not
+    yet accepted.
+  - With W2386 and W2387 the command's own git lines carry D377's options plus
+    `-c diff.autoRefreshIndex=false -c core.hooksPath=/dev/null`, and its
+    `--base` check runs `git --no-lazy-fetch rev-parse`. This repo's command
+    does neither: D377 did not change its `git diff HEAD`, which runs in the
+    caller's own session. The port's extra options are a candidate to take
+    back, not a gap in the port.
+- **Owed:** nothing from this repo that changes the reviewer, through D378
+  (`3306f1c`). The port's own *Not yet ported* section says the same. W2287's
+  measurement changes no agent or command, and the port does not carry it. The
+  two W2279 guards from the port's W2375 are now in this repo too; the extra
+  refusals this repo added beside them (the third argument, a non-array
+  `findings`) are owed (see W2279 below).
 - **Not applicable**, recorded under *Not applicable to OpenCode* in that
   changelog:
   - W2288, because the bundle has no `plugin.json`;
   - every `.github/workflows/eval.yml` change, because it has no CI;
   - the `stride`-side W2277, W2278's consumer half, W2280, W2281, W2283 and
     W2284's consumer half, which port to `stride-opencode`.
-- **Eval:** `fixtures/EXPECTED.md` *Recorded runs* has real OpenCode runs for the
-  considerations rows, one of which (`search_sort_partial`) still fails, and for the
-  nine `phoenix_*` rows. The other full-file rows have not been run.
+- **Eval:** W2389's full run, recorded in `fixtures/EXPECTED.md` *Recorded runs*
+  (2026-10-16 16:49), scored 79 of 82 on OpenCode's default model. It missed
+  `search_sort_partial` (`unmitigated` for `partial`, a model call seen on the
+  agent before the split too) and `curl_pipe_sh.sh` and
+  `supply_chain_typosquat.txt` (each graded `high` twice, where the fixture
+  expects a single `medium` or `low`). `credential_in_consideration_mitigated` passed on its verdicts
+  but failed its hand check again: the agent echoed the consideration verbatim
+  instead of the redaction sentinel, in 3 of 3 runs so far. The port's Step 4.7
+  redactor is the deterministic cover for credential-shaped text.
 
 ---
 
@@ -279,8 +317,8 @@ into the copy is refused, and a symbolic link to one cannot be read through.
 **Per variant.** Re-copy the whole fenced block and the paragraph after it.
 The strings ports key on are unchanged: `stride-security-probe.XXXXXX`, the
 `CI` and no-sandbox lines, and `box env -i PATH=`. Every variant that ports
-W2276 owes this change, including opencode, whose W2373 port copied the 2.7.0
-block byte-identical.
+W2276 owes this change. opencode carries it: its W2373 port (`0742350`) took
+the block with D376 already in it.
 
 ### D377 — git runs no repository-configured program (landed, unreleased)
 
@@ -331,7 +369,7 @@ git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c g
 line and the sentence after the block verbatim, and raise the variant's own core bound if it
 has one. The strings ports key on are unchanged: `stride-security-probe.XXXXXX`,
 the `CI` and no-sandbox lines, `box env -i PATH=` and `SECURITY_RESULT_PATH`.
-The opencode port is tracked as W2386.
+opencode carries it, ported by W2386 (`2ef9a2d`) into a mode file of its own.
 
 ### D378 — signals, IPC and process information stay inside the macOS box (landed, unreleased)
 
@@ -372,7 +410,7 @@ grade-by-reading instruction or the environments in the CI rule go missing.
 again; a port of 2.7.0 or of D376 alone lacks the eight new clauses. The strings
 ports key on are unchanged: `stride-security-probe.XXXXXX`, the `CI` and
 no-sandbox lines, and `box env -i PATH=`. Every variant that ports W2276 owes
-this change, including opencode, whose W2373 port recorded the gap. If a
+this change. opencode carries it, ported by W2387 (`21c8507`, `527a76c`). If a
 variant pins the profile, pin each clause, not `(target others)`.
 
 ### W2277 — `stride` consumes findings (planned; `stride`-side)
