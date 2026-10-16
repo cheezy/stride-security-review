@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Text pins on agents/security-reviewer.md's SECURITY_RESULT_PATH contract (W2284),
 # its considerations-mode rules (W2275), its read-only tool contract (W2276) and
-# its one mode-tag spelling (W2278), its probe sandbox (D376), its neutralised git forms (D377) and its considerations-mode tool budget
+# its one mode-tag spelling (W2278), its probe sandbox (D376, D378), its neutralised git forms (D377) and its considerations-mode tool budget
 # (W2282), plus the tag and flag in the command and skill, and the shape,
 # size and triggers of the agent and skill frontmatter (W2286).
 # The agent's behaviour is a prose contract read by a model, so the cheapest
@@ -98,6 +98,22 @@ pin_in "$REPRO_MODE" "the probe refuses a HOME that is not the account's" '[ -z 
 pin_in "$REPRO_MODE" "the probe refuses a copy under HOME"   'case "$r/" in "$h"/*) echo '"'"'probe copy is under HOME: grading by reading'"'"'; exit 1;; esac'
 pin_in "$REPRO_MODE" "the macOS sandbox denies reads under HOME" '(deny file-read* (subpath \"$h\"))(deny job-creation)'
 pin_in "$REPRO_MODE" "the macOS sandbox denies exec from the copy" '(deny process-exec (subpath \"$r\"))(deny file-map-executable (subpath \"$r\"))'
+# D378: the macOS box denies signals, process information, task ports and local IPC across its
+# boundary. same-sandbox, not (target others): others exempts the snippet's own
+# process group, and the snippet must still signal and reap its own children.
+pin_in "$REPRO_MODE" "the macOS sandbox denies signals to other processes" '(deny signal (require-not (target same-sandbox)))'
+pin_in "$REPRO_MODE" "the macOS sandbox denies process-info of other processes" '(deny process-info* (require-not (target same-sandbox)))'
+pin_in "$REPRO_MODE" "the macOS sandbox denies task ports of other processes" '(deny mach-priv-task-port (require-not (target same-sandbox)))'
+pin_in "$REPRO_MODE" "the macOS sandbox denies task names of other processes" '(deny mach-task-name (require-not (target same-sandbox)))'
+pin_in "$REPRO_MODE" "the macOS sandbox denies task read ports of other processes" '(deny mach-task-read (require-not (target same-sandbox)))'
+pin_in "$REPRO_MODE" "the macOS sandbox denies task inspect ports of other processes" '(deny mach-task-inspect (require-not (target same-sandbox)))'
+pin_in "$REPRO_MODE" "the macOS sandbox denies POSIX IPC"     '(deny ipc-posix*)'
+pin_in "$REPRO_MODE" "the macOS sandbox denies SysV IPC"      '(deny ipc-sysv*)'
+absent_in "$REPRO_MODE" "the signal denial stays scoped to outside processes" '(deny signal)'
+pin_in "$REPRO_MODE" "the prose names the signal, IPC and process-info denials" 'On macOS it also denies signals, POSIX and System V IPC'
+pin_in "$REPRO_MODE" "the prose says a POSIX-IPC snippet is graded by reading" 'a snippet that needs POSIX semaphores or shared memory, such as Python `multiprocessing` locks, pools or `shared_memory`, fails there, so grade it by reading'
+pin_in "$REPRO_MODE" "the untrusted-code rule still names other processes' environments" 'your other processes'"'"' command lines and, on some releases, environments'
+absent_in "$REPRO_MODE" "the prose no longer concedes other processes' environments" 'read the arguments and environment of your other processes'
 pin_in "$REPRO_MODE" "the prose says what the box denies"     'On both systems it denies network access, every write outside the copy, and every read under your home directory'
 pin_in "$REPRO_MODE" "the prose names the macOS exec denial"  'it refuses to run or load as native code any file in the copy'
 pin_in "$REPRO_MODE" "the prose names the Linux socket limit" 'though a socket elsewhere stays reachable'
@@ -105,7 +121,7 @@ pin_in "$REPRO_MODE" "copy scripts run through an interpreter" 'Run a script in 
 pin_in "$REPRO_MODE" "a link cannot get round the read denial" 'so a link cannot get round the read denial'
 pin_in "$REPRO_MODE" "the prose names the HOME refusal"       'The command refuses to run when `HOME` is unset, relative, `/` or not a directory, when it or the copy has a quote, backslash or newline in its path, when it is not your account'"'"'s home directory, or when the copy resolves under it'
 pin_in "$REPRO_MODE" "the prose names launchd job creation"   'it also denies every Unix socket, launchd job creation, and the local channels'
-pin_in "$REPRO_MODE" "the prose names the process-environment limit" 'though on macOS a snippet can still read the arguments and environment of your other processes'
+pin_in "$REPRO_MODE" "the prose names the process-argument limit" 'though on macOS a snippet can still read the command lines of your other processes'
 pin_in "$REPRO_MODE" "reads outside HOME stay possible"       'the sandbox hides your home directory, not the rest of the filesystem'
 pin_in "$REPRO_MODE" "the probe checks CI first"              '[ -z "${CI:-}" ] || { echo '"'"'CI is set: grading by reading'"'"'; exit 1; }'
 pin "no bare git diff on the working tree"   'never a bare `git diff` against the working tree, which rewrites `.git/index`'

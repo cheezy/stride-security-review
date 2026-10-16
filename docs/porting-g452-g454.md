@@ -16,7 +16,8 @@ for each fix, what changes, why, and what each variant needs to carry it.
 to *landed* and replace its "Planned change" paragraph with what actually
 shipped, including the commit and the release. A planned section describes
 intent, not shipped behaviour. All of the G452–G454 tasks were *planned* on
-2026-10-02; D376, a defect in the W2276 block, was added on 2026-10-15.
+2026-10-02; D376, a defect in the W2276 block, was added on 2026-10-15, and
+D378, a further defect in that block's macOS profile, on the same day.
 
 ## Status
 
@@ -38,6 +39,7 @@ intent, not shipped behaviour. All of the G452–G454 tasks were *planned* on
 | W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | landed: [`measurement-2026-10.md`](measurement-2026-10.md); a report only, nothing to release or port |
 | D376 | — (follows W2276) | plugin | The W2276 probe sandbox hides the home directory, refuses a copy under it, and runs nothing native from the copy | landed, unreleased |
 | D377 | — (follows W2276) | plugin | The agent's git forms and the probe's copy step start no program the reviewed repository's config or attributes name | landed, unreleased |
+| D378 | — (follows W2276) | plugin | The macOS probe sandbox denies signals, process-information calls, task ports and POSIX and System V IPC across its boundary | landed, unreleased |
 
 The "Where it lands" column decides who ports what:
 
@@ -204,8 +206,8 @@ it; Claude Code could not. opencode's `edit: false` still leaves its shell able
 to write, so the written rule is needed there too.
 Where no eval exists (see W2274), keep the shell and port the rule only.
 
-**D376 changed this block after 2.7.0** — re-copy it from the section below, not
-from a 2.7.0 port.
+**D376 and D378 changed this block after 2.7.0** — re-copy it from the sections
+below, not from a 2.7.0 port.
 
 ### D376 — a confined probe sandbox (landed, unreleased)
 
@@ -231,8 +233,9 @@ the writable copy and running it. The block now:
 The paragraph after the block states what each system denies, that a script in
 the copy runs through its interpreter (`sh test.sh`), and that the rest of the
 filesystem stays readable, as do, on macOS, the arguments and environment of
-the user's other processes, so the CI and untrusted-contributor rule still
-holds. On macOS a hard link or a `cp` from a file under the home directory
+the user's other processes (D378, below, narrows this to their command lines and, on some releases,
+environments),
+so the CI and untrusted-contributor rule still holds. On macOS a hard link or a `cp` from a file under the home directory
 into the copy is refused, and a symbolic link to one cannot be read through.
 `scripts/check_agent_contract.sh` pins every changed line.
 
@@ -292,6 +295,48 @@ line and the sentence after the block verbatim, and raise the variant's own core
 has one. The strings ports key on are unchanged: `stride-security-probe.XXXXXX`,
 the `CI` and no-sandbox lines, `box env -i PATH=` and `SECURITY_RESULT_PATH`.
 The opencode port is tracked as W2386.
+
+### D378 — signals, IPC and process information stay inside the macOS box (landed, unreleased)
+
+**Change.** D376's `sandbox-exec` profile starts from `(allow default)` and
+did not deny signals, POSIX or System V IPC, process-information calls or
+task ports, so a snippet could kill or stop the user's editor or agent, send
+`SIGUSR1` to a Node process to open its inspector, attach to POSIX shared
+memory by name, read another process's executable path and open files, and take
+its task name port. The macOS profile now:
+
+- adds `(deny signal (require-not (target same-sandbox)))`,
+  `(deny process-info* (require-not (target same-sandbox)))`,
+  `(deny mach-priv-task-port (require-not (target same-sandbox)))`,
+  `(deny mach-task-name (require-not (target same-sandbox)))`,
+  `(deny mach-task-read (require-not (target same-sandbox)))`,
+  `(deny mach-task-inspect (require-not (target same-sandbox)))`,
+  `(deny ipc-posix*)` and `(deny ipc-sysv*)` after `(deny job-creation)` and
+  before `(deny file-write* …)`, keeping every earlier denial;
+- uses `same-sandbox`, not `(target others)`: a live check showed `others`
+  exempts every process in the snippet's own process group, which includes the
+  shell that ran the probe and, where a runtime does not give its tool shell a
+  group of its own, the agent. A snippet still signals and reaps the children
+  it starts, because they inherit the box.
+
+The paragraph after the block names the new denials, says a snippet that needs
+POSIX semaphores or shared memory (Python `multiprocessing` locks, pools,
+`shared_memory`) fails in the box, and replaces the D376 concession: on macOS a
+snippet can still read other processes' command lines through the kernel's
+process-argument `sysctl`, which no `sysctl-read` rule denies, not even a
+blanket `(deny sysctl-read)`, and their environments on a macOS release that
+returns them. The CI and untrusted-contributor rule stays, and
+still names other processes' command lines and environments. The Linux
+`bwrap` line is unchanged. `scripts/check_agent_contract.sh` pins each clause
+and fails on a bare `(deny signal)`, on the old concession, or when the
+grade-by-reading instruction or the environments in the CI rule go missing.
+
+**Per variant.** Re-copy the whole fenced block and the paragraph after it
+again; a port of 2.7.0 or of D376 alone lacks the eight new clauses. The strings
+ports key on are unchanged: `stride-security-probe.XXXXXX`, the `CI` and
+no-sandbox lines, and `box env -i PATH=`. Every variant that ports W2276 owes
+this change, including opencode, whose W2373 port recorded the gap. If a
+variant pins the profile, pin each clause, not `(target others)`.
 
 ### W2277 — `stride` consumes findings (planned; `stride`-side)
 
