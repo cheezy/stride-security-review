@@ -77,9 +77,15 @@ checkout. Re-check a cell before relying on it.
 |---|---|---|---|---|---|---|
 | `stride-security-review` (Claude Code) | v2.5.2 | `agents/security-reviewer.md`, 74,441 B | `Read, Grep, Glob, Bash`; `model: inherit` | none | `commands/security-review.md` | `scripts/run_eval.sh`, `.github/workflows/eval.yml`, `test/fixtures/` (64 entries) |
 | `stride-gemini-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,442 B | `read_file, grep_search, glob, run_shell_command` | **`max_turns: 10`, which the runtime enforces** | `commands/security-review.toml` | no eval script or CI workflow found; `fixtures/` (65 entries) |
-| `stride-opencode-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,452 B | `read, bash: true`, **`edit: false`** | none found | `commands/security-review.md` | no eval script or CI workflow found; `fixtures/` (65 entries) |
+| `stride-opencode-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,452 B | `read, grep, glob, bash: true`, **`write: false`, `edit: false`** | none found | `commands/security-review.md` | `lib/run_eval.sh`, which runs `opencode run --agent security-reviewer`; no CI workflow; `fixtures/` (65 entries) |
 | `stride-copilot-security-review` | v0.4.2 | `agents/security-reviewer.agent.md`, 72,935 B | `["read", "search", "glob", "run"]` | none found | none found; the skill is `security-review-essentials` | `scripts/run_eval.sh`, which per its own header (lines 6–7) still calls `claude -p`; `.github/workflows/eval.yml`; `test/fixtures/` (62 entries) |
 | `stride-codex-security-review` | v0.1.2 | `agents/security-reviewer.md`, 74,370 B | `["read", "search", "glob", "shell"]` | none found | `skills/stride-security-review/SKILL.md` | no eval script or CI workflow found; `fixtures/` (65 entries) |
+
+The opencode row's tools and Eval / CI cells were corrected on 2026-10-16. At
+v0.1.1 the agent's frontmatter already set `write: false` beside `edit: false` and
+enabled `grep` and `glob`, and `lib/run_eval.sh` already existed. Check both with
+`git -C stride-opencode-security-review show v0.1.1:agents/security-reviewer.md` and
+`git -C stride-opencode-security-review show v0.1.1:lib/run_eval.sh`.
 
 What this table decides:
 
@@ -88,14 +94,19 @@ What this table decides:
   variants nearly line for line. Each needs its own tool vocabulary.
 - **Every variant gives the agent a shell.** That makes W2276 (read-only) relevant
   everywhere.
-  - opencode already sets `edit: false`, but a shell can still write files.
+  - opencode already sets `write: false` and `edit: false`, but a shell can still
+    write files.
   - gemini's `max_turns: 10` already bounds a dispatch hard; check whether W2282's
     budget makes it redundant there or whether 10 is too tight.
-- **Only Claude Code and copilot have an eval harness and CI.**
+- **Only Claude Code and copilot have an eval harness and CI.** opencode has an eval
+  runner but no CI.
   - The copilot eval invokes `claude -p` according to its own comment, so it may
     not test the Copilot agent at all. Verify that before porting W2274.
-  - gemini, opencode and codex have fixtures but no eval runner. W2274 there means
-    building one, or recording that the variant is unevaluated.
+  - gemini and codex have fixtures but no eval runner. W2274 there means building
+    one, or recording that the variant is unevaluated. opencode's `lib/run_eval.sh`
+    pipes each prompt into `opencode run --agent security-reviewer`, so W2274 there
+    is a fix to the existing runner. At v0.1.1 that runner scored OpenCode's default
+    agent, because `opencode run --agent` replaces a `mode: subagent` agent with it.
 
 **Where the `stride` side lives in each port.** These `stride`-side fixes port to
 each `stride` port's own text: W2277, W2278's consumer half, W2280, W2281, W2283
@@ -109,6 +120,29 @@ and W2284's consumer half. `stride` keeps the deep sub-step in
   single workflow skill.
 - `grep -rl security-review stride-pi/skills` found no reference, so `stride-pi`
   may not run a deep security review at all. Confirm this before porting there.
+
+### The opencode port, as of 2026-10-16
+
+`stride-opencode-security-review` has ported this batch in tasks W2371 to W2380 and W2383.
+None of it is released yet. That repository's `CHANGELOG.md` `[Unreleased]` entry
+names, for each upstream change, the task that ported it and what was adapted.
+
+- **Ported:** W2274, W2275, W2276 with D376, W2278's plugin half, W2279, W2282,
+  W2284's plugin half, W2285 and W2286. W2383 adds deterministic redaction of the
+  result, which has no upstream counterpart. The agent's result-file write goes
+  through `bash` under the written contract, not through a scoped write permission.
+- **Owed:** D377, tracked as W2386. Upstream raised its core ceiling to 16,384
+  bytes for D377. The opencode core is 15,325 of its 15,360 bytes, so the port has
+  to make room or raise that bound. D378 has no opencode port yet.
+- **Not applicable**, recorded under *Not applicable to OpenCode* in that
+  changelog:
+  - W2288, because the bundle has no `plugin.json`;
+  - every `.github/workflows/eval.yml` change, because it has no CI;
+  - the `stride`-side W2277, W2278's consumer half, W2280, W2281, W2283 and
+    W2284's consumer half, which port to `stride-opencode`.
+- **Eval:** `fixtures/EXPECTED.md` *Recorded runs* has real OpenCode runs for the
+  considerations rows, one of which (`search_sort_partial`) still fails, and for the
+  nine `phoenix_*` rows. The other full-file rows have not been run.
 
 ---
 
@@ -126,8 +160,11 @@ ever been ticked.
 - **copilot:** its eval and CI exist, but its runner calls `claude -p`. Point it at
   the Copilot CLI with the plugin's own agent, or record that it evaluates the
   Claude Code prompt.
-- **gemini, opencode, codex:** build a runner around their own CLI, or say plainly
-  in the README that the variant is not evaluated.
+- **gemini, codex:** build a runner around their own CLI, or say plainly in the
+  README that the variant is not evaluated.
+- **opencode:** fix the existing `lib/run_eval.sh` so that it scores the bundle's
+  own agent, not the default agent `opencode run --agent` falls back to for a
+  `mode: subagent` agent.
 - **All variants:** port the new considerations fixtures (partial, a `None —`
   placeholder, injection inside a consideration, injection inside the diff, a
   noise-class consideration and a pre-existing gap) with their `EXPECTED.md`
@@ -520,7 +557,9 @@ sub-step together. Porting one side alone leaves considerations unassessed.
 
 **Per variant.** Every variant's agent needs a way to write one file:
 
-- opencode has `edit: false`, so it needs a narrowly scoped write.
+- opencode has `edit: false`, so it needs a narrowly scoped write. Its port (W2377)
+  writes through `bash` under the one-path rule instead, after a live check of
+  OpenCode's permissions.
 - The others can write through their shell under an explicit one-path rule.
   W2276 settled how that sits with the read-only rule: the result file is the
   one write in the repository, under `.stride/`, and a probe copy lives outside
