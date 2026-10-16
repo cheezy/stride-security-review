@@ -37,6 +37,7 @@ intent, not shipped behaviour. All of the G452–G454 tasks were *planned* on
 | W2286 | G454 | plugin | Trimmed always-loaded descriptions | released in 2.7.0 (the agent description trim landed with W2285) |
 | W2287 | G454 | measurement | Before and after against the 2026-10-02 baseline | landed: [`measurement-2026-10.md`](measurement-2026-10.md); a report only, nothing to release or port |
 | D376 | — (follows W2276) | plugin | The W2276 probe sandbox hides the home directory, refuses a copy under it, and runs nothing native from the copy | landed, unreleased |
+| D377 | — (follows W2276) | plugin | The agent's git forms and the probe's copy step start no program the reviewed repository's config or attributes name | landed, unreleased |
 
 The "Where it lands" column decides who ports what:
 
@@ -240,6 +241,57 @@ The strings ports key on are unchanged: `stride-security-probe.XXXXXX`, the
 `CI` and no-sandbox lines, and `box env -i PATH=`. Every variant that ports
 W2276 owes this change, including opencode, whose W2373 port copied the 2.7.0
 block byte-identical.
+
+### D377 — git runs no repository-configured program (landed, unreleased)
+
+**Change.** The W2276 git forms and the probe's copy step honoured the reviewed
+repository's local config, so a `core.fsmonitor` hook, `diff.external`, a
+`diff.<driver>.command`, a textconv driver, or `gpg.program` under
+`log.showSignature` ran outside the sandbox; so did a `core.pager` under a
+terminal, a submodule's diff programs under `diff.submodule=diff`, and the
+`core.sshCommand` of a partial clone's lazy fetch, and a `format.pretty` or
+`pretty.<name>` holding `%G` despite `--no-show-signature`. Now:
+
+- the agent's read-only bullet allows `ls`, `wc` and `git --no-pager
+  --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false
+  -c gpg.ssh.program=false -c gpg.x509.program=false` with `ls-files`, `diff --cached`,
+  `diff <commit> <commit>`, `log` or `show`, every `diff`, `log` and `show` with
+  `--no-ext-diff --no-textconv --submodule=short`, and `log` and `show` also
+  with `--no-show-signature`; never drop a flag, add `--ext-diff`, `--textconv`
+  or `--show-signature`, or put a `%G` placeholder in `--format`/`--pretty`; a
+  git older than 2.44 rejects `--no-lazy-fetch` and runs nothing, so the agent
+  reads with `Read`; no `ls-files -m`;
+- the bullet's examples after "nothing through `git`" (`stash`, `checkout`,
+  `restore`, `apply`, `worktree`, `commit`) are dropped for the core's byte
+  budget: the allow-list already excludes them;
+- `git diff-index -p <commit>` is dropped: comparing the working tree runs a
+  configured clean filter, which no flag disables;
+- a new line before the copy step, `git --no-lazy-fetch version >/dev/null 2>&1
+  || { echo 'git before 2.44: grading by reading'; exit 1; }`, refuses to probe
+  on a git that cannot turn lazy fetching off;
+- the copy step is `git --no-lazy-fetch -c core.fsmonitor=false ls-files -z
+  --cached --others --exclude-standard | tar …` (in a sparse partial clone
+  `--exclude-standard` lazy-fetched a skip-worktree `.gitignore`), and the
+  paragraph after the block says why.
+
+The five full forms, as the README lists them:
+
+```text
+git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false ls-files
+git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false diff --cached --no-ext-diff --no-textconv --submodule=short
+git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false diff --no-ext-diff --no-textconv --submodule=short <commit> <commit>
+git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false log --no-ext-diff --no-textconv --submodule=short --no-show-signature
+git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false show --no-ext-diff --no-textconv --submodule=short --no-show-signature
+```
+
+`scripts/check_agent_contract.sh` pins them, and its core ceiling rises from
+15,360 to 16,384 bytes.
+
+**Per variant.** Copy the bullet's git sentences, the guard line, the copy-step
+line and the sentence after the block verbatim, and raise the variant's own core bound if it
+has one. The strings ports key on are unchanged: `stride-security-probe.XXXXXX`,
+the `CI` and no-sandbox lines, `box env -i PATH=` and `SECURITY_RESULT_PATH`.
+The opencode port is tracked as W2386.
 
 ### W2277 — `stride` consumes findings (planned; `stride`-side)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Text pins on agents/security-reviewer.md's SECURITY_RESULT_PATH contract (W2284),
 # its considerations-mode rules (W2275), its read-only tool contract (W2276) and
-# its one mode-tag spelling (W2278), its probe sandbox (D376) and its considerations-mode tool budget
+# its one mode-tag spelling (W2278), its probe sandbox (D376), its neutralised git forms (D377) and its considerations-mode tool budget
 # (W2282), plus the tag and flag in the command and skill, and the shape,
 # size and triggers of the agent and skill frontmatter (W2286).
 # The agent's behaviour is a prose contract read by a model, so the cheapest
@@ -23,6 +23,15 @@ pin_in() { # $1=file $2=label $3=fixed-string needle
   else
     echo "FAIL: $2 -- missing: $3"
     fail=1
+  fi
+}
+
+absent_in() { # $1=file $2=label $3=fixed-string needle that must NOT appear
+  if grep -qF -- "$3" "$1"; then
+    echo "FAIL: $2 -- still present: $3"
+    fail=1
+  else
+    echo "ok: $2"
   fi
 }
 
@@ -107,6 +116,35 @@ pin_in "$REPRO_MODE" "sinks are rebased into the copy"        'point every write
 pin_in "$REPRO_MODE" "no probe in CI or on untrusted code"   'Run nothing either when `CI` is set in your environment (the command checks it first) or the caller says the change comes from an untrusted contributor'
 pin "the result file is the only repo write" 'write nothing else in the repository, and never outside `.stride/`'
 
+# D377: no git command the agent or the probe runs may start a program the
+# reviewed repository's config or attributes name (core.fsmonitor, diff.external,
+# diff.<driver>.command, a textconv driver, gpg.program via log.showSignature or a
+# %G format or format.pretty, core.pager, a submodule's diff programs, a lazy
+# fetch's sshCommand, including the probe copy step's in a sparse partial clone).
+README="$ROOT/README.md"
+pin "every git form disables the pager, lazy fetch, core.fsmonitor and gpg" '`git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false` with `ls-files`, `diff --cached`, `diff <commit> <commit>`, `log` or `show`'
+pin "diff, log and show pass --no-ext-diff --no-textconv --submodule=short" 'every `diff`, `log` and `show` with `--no-ext-diff --no-textconv --submodule=short`'
+pin "log and show pass --no-show-signature"  '`log` and `show` also with `--no-show-signature`'
+pin "the flags are never dropped or undone"   'The flags stop git running a program the repository configures; never drop one, add `--ext-diff`, `--textconv` or `--show-signature`, or put a `%G` placeholder in `--format` or `--pretty`.'
+pin "an older git runs nothing"              'A git that rejects `--no-lazy-fetch` (before 2.44) runs nothing: read with `Read`.'
+pin "no ls-files -m on the working tree"     'No `ls-files -m`, which runs its clean filter'
+for old in '`git diff --cached`' '`git diff <commit> <commit>`' '`git diff-index -p <commit>`' '`git log`' '`git show`' '`git ls-files`'; do
+  absent_in "$AGENT" "the core lists no un-neutralised form $old" "$old"
+done
+pin_in "$REPRO_MODE" "the probe copy step neutralises core.fsmonitor and lazy fetch" 'git --no-lazy-fetch -c core.fsmonitor=false ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | tar -xf - -C "$d"'
+pin_in "$REPRO_MODE" "the probe refuses a git before 2.44"  'git --no-lazy-fetch version >/dev/null 2>&1 || { echo '"'"'git before 2.44: grading by reading'"'"'; exit 1; }'
+pin_in "$REPRO_MODE" "the prose names the lazy-fetch guard" 'a git older than 2.44 rejects `--no-lazy-fetch`, so the line before it refuses to probe'
+absent_in "$REPRO_MODE" "the probe runs no un-neutralised git ls-files" 'git ls-files'
+pin_in "$REPRO_MODE" "the prose names the fsmonitor override" 'so git runs no `core.fsmonitor` program the repository configures'
+for form in '`git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false ls-files`' \
+  '`git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false diff --cached --no-ext-diff --no-textconv --submodule=short`' \
+  '`git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false diff --no-ext-diff --no-textconv --submodule=short <commit> <commit>`' \
+  '`git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false log --no-ext-diff --no-textconv --submodule=short --no-show-signature`' \
+  '`git --no-pager --no-lazy-fetch -c core.fsmonitor=false -c gpg.program=false -c gpg.ssh.program=false -c gpg.x509.program=false show --no-ext-diff --no-textconv --submodule=short --no-show-signature`'; do
+  pin_in "$README" "the README lists $form" "$form"
+done
+absent_in "$README" "the README lists no worktree diff-index form" '`git diff-index -p`'
+
 # W2278: one mode-tag spelling, an untagged list from an older caller, and no
 # output path but SECURITY_RESULT_PATH. The command sends that exact tag and the
 # skill's flag inventory lists --considerations.
@@ -155,22 +193,14 @@ pin "the verdict rules name the exception"   '**The one unbacked `partial` — a
 pin_in "$CONS_MODE" "an info backing would pass the gate"    'an `info` one would let the `--fail-on` gate pass an unverified consideration'
 pin_in "$COMMAND" "the command gates a budget partial"      'a `partial` whose `note` begins `budget reached:`'
 
-# W2285: a 12-15 KB core, rule packs and mode files read on demand from the
+# W2285: a 12-15 KB core (16 KiB ceiling since D377), rule packs and mode files read on demand from the
 # plugin root (never under agents/, where every .md registers as an agent),
 # and the MAESTRO / patches / RCI rules owned by the command's opt-in blocks.
-absent_in() { # $1=file $2=label $3=fixed-string needle that must NOT appear
-  if grep -qF -- "$3" "$1"; then
-    echo "FAIL: $2 -- still present: $3"
-    fail=1
-  else
-    echo "ok: $2"
-  fi
-}
 core_bytes="$(wc -c < "$AGENT" | tr -d ' ')"
-if [ "$core_bytes" -ge 10240 ] && [ "$core_bytes" -le 15360 ]; then
-  echo "ok: the core is $core_bytes bytes (10240-15360)"
+if [ "$core_bytes" -ge 10240 ] && [ "$core_bytes" -le 16384 ]; then
+  echo "ok: the core is $core_bytes bytes (10240-16384)"
 else
-  echo "FAIL: the core is $core_bytes bytes, outside 10240-15360"
+  echo "FAIL: the core is $core_bytes bytes, outside 10240-16384"
   fail=1
 fi
 PACKS="android django express ios phoenix rails react-nextjs web-defense supply-chain ci-cd agentic"
