@@ -18,13 +18,23 @@
 #   sarif_transform.sh fingerprint <findings.json>   # one lowercase hex hash per finding, in order
 #   sarif_transform.sh dedup       <findings.json>   # order-stable dedup by (file,line,vulnerability_class)
 #   sarif_transform.sh sarif       <findings.json>   # SARIF v2.1.0 document
-#   sarif_transform.sh failon <severity> <findings.json> [<n_considerations>]
+#   sarif_transform.sh failon <severity> <findings.json> [<n_considerations>|<considerations_file>]
 #                                                    # prints N_GATE; exit 1 if >0, else 0
-#   sarif_transform.sh suppress <baseline.json> <findings.json> [<n_considerations>]
+#   sarif_transform.sh suppress <baseline.json> <findings.json> [<n_considerations>|<considerations_file>]
 #                                                    # Step 4.6 document with acknowledged,
 #                                                    # non-backing findings dropped
 #
+#   The optional third argument is the resolved consideration count (an integer
+#   of at least 1) or a file holding the resolved considerations, one per line,
+#   blank lines skipped. A count checks the verdict array's length; a file also
+#   checks that entry i answers consideration i (Step 4's out-of-position rule).
+#   An empty third argument, and an all-digit one that also names a file, exit 2;
+#   pass such a file as ./<name>.
+#
 # Input shape is the agent's native findings document: {"findings":[ {finding}, ... ], ...}.
+# failon and suppress take exactly one such document, a single JSON object whose
+# findings is absent or an array, and exit 2 on anything else (an empty file,
+# several documents run together, a findings value of another type).
 #
 # Spec references (commands/security-review.md):
 #   - Step 4.6  fingerprint = SHA256(vulnerability_class|file|line|first_80_chars_of_description), lowercase hex
@@ -32,7 +42,8 @@
 #   - Step 5    SARIF v2.1.0 mapping (severity->level/security-severity, tags, partialFingerprints)
 #   - Step 4    a finding that backs a verdict: file equal and line inside a path:line or
 #               path:start-end reference in an open (partial/unmitigated) verdict's evidence;
-#               an open verdict nothing backs, or missing/short/malformed verdicts, protect all
+#               an open verdict nothing backs, or missing/short/malformed/out-of-position
+#               verdicts, protect all
 #   - Step 4.6  baseline suppression never drops a finding that backs a verdict
 #   - Step 6    fail-on threshold: critical>high>medium>low>info; info never trips a threshold;
 #               an unmitigated verdict, an unbacked partial verdict and missing or malformed
@@ -129,14 +140,17 @@ rank() {
 
 # VERDICT_JQ — the Step 4 "a finding that backs a verdict" definition, shared by
 # failon and suppress. $n is the resolved consideration count, or null when the
-# caller did not say (then only the verdicts actually present are checked).
+# caller did not say (then only the verdicts actually present are checked). $cl
+# is the resolved considerations list when the caller passed a file, else null.
 #   refs($v)       every [path, start, end] reference in the verdict's evidence
 #   backs($f; $v)  the finding's file equals a reference path and its line is in range
 #   verdicts       the consideration_verdicts array, or [] when it is not an array
 #   open           the partial and unmitigated entries
 #   bad_status     entries that are not objects or whose status is outside the enum
-#   malformed      1 when the array is missing/short/not an array (with $n), or
-#                  present but not an array (without $n); else 0
+#   misplaced      with $cl, true when some entry i is not an object whose
+#                  consideration is $cl[i] verbatim or the redaction sentinel
+#   malformed      1 when the array is missing/short/not an array or misplaced
+#                  (with $n), or present but not an array (without $n); else 0
 #   unbacked($v)   true when no finding backs the open verdict $v
 VERDICT_JQ='
   def refs($v):
@@ -154,10 +168,19 @@ VERDICT_JQ='
   def bad_status:
     [ verdicts[] | select((vstatus == "mitigated" or vstatus == "partial"
                            or vstatus == "unmitigated") | not) ];
+  def misplaced:
+    . as $doc
+    | $cl != null
+      and any(range($cl | length) as $i | [$doc.consideration_verdicts[$i], $cl[$i]];
+              (.[0] | type) != "object"
+              or (.[0].consideration != .[1]
+                  and .[0].consideration != "[REDACTED — row text embedded a credential]"));
   def malformed:
     if $n != null then
       (if (.consideration_verdicts | type) != "array"
-          or (.consideration_verdicts | length) != $n then 1 else 0 end)
+          or (.consideration_verdicts | length) != $n then 1
+       elif misplaced then 1
+       else 0 end)
     else
       (if has("consideration_verdicts")
           and (.consideration_verdicts | type) != "array" then 1 else 0 end)
@@ -173,20 +196,63 @@ check_n() {
   [ "$1" -ge 1 ] || die "n_considerations must be an integer of at least 1 (got: $1)"
 }
 
+# considerations_arg [<arg>] — reads the optional third argument into N and CL.
+# With no third argument N and CL are null. An integer is the count, with CL
+# null. Anything else must be a readable file of the resolved considerations, one
+# per line: a trailing CR is dropped and blank or whitespace-only lines are
+# skipped; CL is that list and N its length. Step 1 takes one consideration per
+# non-empty line, so a line the command kept and this drops can only make the
+# position check fail closed. A count or a file below one consideration is a
+# usage error, exactly as the command refuses an empty list. A third argument
+# that is present but empty, or all digits while also naming a file, is refused
+# rather than read as "no considerations" or as a count that skips the position
+# check.
+considerations_arg() {
+  N=null; CL=null
+  [ $# -eq 1 ] || return 0
+  case "$1" in
+    '') die "considerations argument is empty (pass a count or a file, or omit it)" ;;
+    *[!0-9]*)
+      [ -f "$1" ] && [ -r "$1" ] || die "considerations must be a count or a readable file (got: $1)"
+      CL=$(jq -Rsc 'split("\n") | map(sub("\r$"; "")) | map(select(test("\\S")))' "$1")
+      N=$(printf '%s' "$CL" | jq 'length')
+      [ "$N" -ge 1 ] || die "considerations file lists no consideration: $1" ;;
+    *)
+      [ ! -e "$1" ] || die "considerations argument $1 is both a count and a file name; pass the file as ./$1"
+      N="$1" ;;
+  esac
+  [ "$N" = null ] || check_n "$N"
+}
+
+# one_document <file> — failon and suppress read exactly one findings document,
+# a single JSON object whose findings is absent or an array. jq prints nothing
+# for an empty file (a crashed or truncated dispatch) and one result per
+# document for several run together, and either used to reach the gate as "not
+# greater than 0" and pass it. A null or other non-array findings would read as
+# zero findings, so it is refused too.
+one_document() {
+  jq -se 'length == 1 and (.[0] | type) == "object"
+           and ((.[0] | has("findings") | not) or (.[0].findings | type) == "array")' \
+    "$1" >/dev/null 2>&1 \
+    || die "expected one findings document (a single JSON object) in $1"
+}
+
 cmd_failon() {
-  local threshold="$1" input="$2" n="${3:-null}"
+  local threshold="$1" input="$2" N CL
+  shift 2
   case "$threshold" in
     critical|high|medium|low) ;;
     *) die "--fail-on requires one of: critical, high, medium, low (got: $threshold)" ;;
   esac
-  [ "$n" = null ] || check_n "$n"
+  considerations_arg "$@"
+  one_document "$input"
   local tr
   tr=$(rank "$threshold")
   local count
   # N_GATE = findings at/above the threshold + verdicts that trip the gate. With no
   # consideration_verdicts key and no n the verdict terms are all 0, so the count
   # is exactly the severity-only count of earlier releases.
-  count=$(jq --argjson tr "$tr" --argjson n "$n" "$VERDICT_JQ"'
+  count=$(jq --argjson tr "$tr" --argjson n "$N" --argjson cl "$CL" "$VERDICT_JQ"'
     . as $doc
     | ([ ($doc.findings // [])[]
          | .severity
@@ -199,14 +265,19 @@ cmd_failon() {
       + (bad_status | length)
       + malformed
   ' "$input")
+  # A second check behind one_document: only a bare integer is a count, and
+  # anything else fails closed as bad input.
+  case "$count" in ''|*[!0-9]*) die "failon could not compute N_GATE (got: $count)" ;; esac
   printf '%s\n' "$count"
   [ "$count" -gt 0 ] && return 1
   return 0
 }
 
 cmd_suppress() {
-  local baseline="$1" input="$2" n="${3:-null}"
-  [ "$n" = null ] || check_n "$n"
+  local baseline="$1" input="$2" N CL
+  shift 2
+  considerations_arg "$@"
+  one_document "$input"
   # Step 4.6 step 1: a malformed baseline means no suppression at all (and no
   # suppressed_count, since no baseline is in play).
   if ! jq -e '(.schema_version == 1) and ((.acknowledged | type) == "array")' "$baseline" >/dev/null 2>&1; then
@@ -217,7 +288,7 @@ cmd_suppress() {
   local ack fps
   ack=$(jq '[ .acknowledged[] | .fingerprint? // empty | tostring ]' "$baseline")
   fps=$(cmd_fingerprint "$input" | jq -R . | jq -s .)
-  jq --argjson ack "$ack" --argjson fps "$fps" --argjson n "$n" "$VERDICT_JQ"'
+  jq --argjson ack "$ack" --argjson fps "$fps" --argjson n "$N" --argjson cl "$CL" "$VERDICT_JQ"'
     . as $doc
     | ( (open | any(.[]; . as $v | $doc | unbacked($v)))
         or ((bad_status | length) > 0)
@@ -326,9 +397,9 @@ main() {
     fingerprint) [ $# -eq 1 ] || die "fingerprint <findings.json>"; cmd_fingerprint "$1" ;;
     dedup)       [ $# -eq 1 ] || die "dedup <findings.json>";       cmd_dedup "$1" ;;
     sarif)       [ $# -eq 1 ] || die "sarif <findings.json>";       cmd_sarif "$1" ;;
-    failon)      { [ $# -eq 2 ] || [ $# -eq 3 ]; } || die "failon <severity> <findings.json> [<n_considerations>]"
+    failon)      { [ $# -eq 2 ] || [ $# -eq 3 ]; } || die "failon <severity> <findings.json> [<n_considerations>|<considerations_file>]"
                  cmd_failon "$@" ;;
-    suppress)    { [ $# -eq 2 ] || [ $# -eq 3 ]; } || die "suppress <baseline.json> <findings.json> [<n_considerations>]"
+    suppress)    { [ $# -eq 2 ] || [ $# -eq 3 ]; } || die "suppress <baseline.json> <findings.json> [<n_considerations>|<considerations_file>]"
                  cmd_suppress "$@" ;;
     *)           die "unknown mode: $mode" ;;
   esac

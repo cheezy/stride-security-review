@@ -300,7 +300,7 @@ The plugin ships a reference workflow at [`.github/workflows/security-review.yml
 
 When the slash command is invoked with `--fail-on <severity>`, it exits non-zero if any finding at or above the threshold is present. Severities order as `critical > high > medium > low > info`.
 
-With `--considerations`, the gate also fails closed on the verdicts, whatever the threshold: an `unmitigated` verdict trips it even with no finding, as does a `partial` verdict that no finding backs and a missing or malformed `consideration_verdicts` array. A `partial` verdict with a backing finding is gated by that finding's severity.
+With `--considerations`, the gate also fails closed on the verdicts, whatever the threshold: an `unmitigated` verdict trips it even with no finding, as does a `partial` verdict that no finding backs and a missing or malformed `consideration_verdicts` array — including one whose entries do not answer the considerations in order. A `partial` verdict with a backing finding is gated by that finding's severity.
 
 | Exit | Meaning |
 |---|---|

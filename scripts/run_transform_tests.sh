@@ -11,8 +11,11 @@
 #   2. Explicit spec assertions — exact values from the prose contract
 #      (fingerprint preimage, severity->level/security-severity table, dedup key,
 #      fail-on counting, the verdict gate, the baseline rule for a finding that
-#      backs a verdict) so a golden that drifts WITH the implementation can't
-#      hide a spec violation.
+#      backs a verdict, one findings document in, verdict i answering
+#      consideration i) so a golden that drifts WITH the implementation can't
+#      hide a spec violation. A guard self-test deletes each input and position
+#      guard from a copy of the script and checks the bad input then gets
+#      through, so the assertions are proven to catch a deleted guard.
 #
 # Pure: no network, no Claude CLI, no ANTHROPIC_API_KEY. Only jq + a SHA-256
 # utility are needed, so it runs cheaply in CI on every push.
@@ -218,6 +221,79 @@ main() {
   echo '{"schema_version":2,"acknowledged":[]}' > "$tmp/s_bad_base.json"
   assert_eq "suppress: malformed baseline leaves the document unchanged" "3 null" \
     "$(bash "$XFORM" suppress "$tmp/s_bad_base.json" "$tmp/s_legacy.json" 2>/dev/null | jq -r '"\(.findings | length) \(.summary.suppressed_count)"')"
+
+  # ---- one findings document in, or exit 2 -------------------------------
+  # An empty file (a crashed or truncated dispatch) and two documents run
+  # together are bad input, never a gate that reads zero and passes.
+  # rc_of <cmd...> — prints the command's exit code.
+  rc_of() { local rc; set +e; "$@" >/dev/null 2>&1; rc=$?; set -e; printf '%s' "$rc"; }
+  : > "$tmp/d_empty.json"
+  cat "$tmp/v_missing.json" "$tmp/v_missing.json" > "$tmp/d_two.json"
+  echo '[]' > "$tmp/d_array.json"
+  echo '{"findings":"none"}' > "$tmp/d_strfind.json"
+  echo '{"findings":null}' > "$tmp/d_nullfind.json"
+  assert_eq "failon: an empty findings file is bad input (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/d_empty.json" 1)"
+  assert_eq "failon: two documents run together are bad input (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/d_two.json" 1)"
+  assert_eq "failon: a document that is not an object is bad input (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/d_array.json")"
+  assert_eq "failon: findings that are not an array are bad input (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/d_strfind.json")"
+  assert_eq "failon: null findings are bad input, not zero findings (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/d_nullfind.json")"
+  assert_eq "suppress: null findings are bad input (exit 2)" "2" "$(rc_of bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/d_nullfind.json")"
+  assert_eq "suppress: two documents run together are bad input (exit 2)" "2" "$(rc_of bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/d_two.json" 1)"
+  assert_eq "suppress: two documents are bad input under a malformed baseline too (exit 2)" "2" "$(rc_of bash "$XFORM" suppress "$tmp/s_bad_base.json" "$tmp/d_two.json" 1)"
+
+  # ---- verdict i answers consideration i ----------------------------------
+  # With the resolved considerations as a file, a same-length array that
+  # repeats one verdict and drops another is malformed: it fails the gate and
+  # protects every finding from the baseline. A count alone checks length only.
+  printf 'c1\n\n  \nc2\r\n' > "$tmp/p_list.txt"
+  local p1 p2
+  p1='{"consideration":"c1","status":"mitigated","evidence":"a.py:1","note":"n"}'
+  p2='{"consideration":"c2","status":"mitigated","evidence":"a.py:2","note":"n"}'
+  echo "{\"findings\":[],\"consideration_verdicts\":[$p1,$p2]}" > "$tmp/p_ok.json"
+  echo "{\"findings\":[],\"consideration_verdicts\":[$p1,$p1]}" > "$tmp/p_dup.json"
+  echo "{\"findings\":[],\"consideration_verdicts\":[$p2,$p1]}" > "$tmp/p_swap.json"
+  echo "{\"findings\":[],\"consideration_verdicts\":[{\"consideration\":\"[REDACTED — row text embedded a credential]\",\"status\":\"mitigated\",\"evidence\":\"a.py:1\",\"note\":\"n\"},$p2]}" > "$tmp/p_red.json"
+  echo "{\"findings\":$finds,\"consideration_verdicts\":[$p1,$p1]}" > "$tmp/p_sdup.json"
+  assert_eq "failon: verdicts that answer the list in order pass" "0" "$(rc_of bash "$XFORM" failon critical "$tmp/p_ok.json" "$tmp/p_list.txt")"
+  assert_eq "failon: a repeated verdict that drops a consideration fails closed" "1" "$(bash "$XFORM" failon critical "$tmp/p_dup.json" "$tmp/p_list.txt" || true)"
+  assert_eq "failon: verdicts in the wrong order fail closed" "1" "$(rc_of bash "$XFORM" failon critical "$tmp/p_swap.json" "$tmp/p_list.txt")"
+  assert_eq "failon: the redaction sentinel answers its own position" "0" "$(rc_of bash "$XFORM" failon critical "$tmp/p_red.json" "$tmp/p_list.txt")"
+  assert_eq "failon: a count alone does not see the repeat" "0" "$(rc_of bash "$XFORM" failon critical "$tmp/p_dup.json" 2)"
+  assert_eq "suppress: a repeated verdict protects every finding" "3 0" \
+    "$(bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/p_sdup.json" "$tmp/p_list.txt" | jq -r '"\(.findings | length) \(.summary.suppressed_count)"')"
+  : > "$tmp/p_empty.txt"
+  assert_eq "failon: an empty considerations file is a usage error (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/p_ok.json" "$tmp/p_empty.txt")"
+  assert_eq "failon: a considerations argument that is no file is a usage error (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/p_ok.json" "$tmp/no-such-list.txt")"
+  # The third argument never silently weakens the gate: present but empty, the
+  # literal word null with no such file, or all digits while a file of that name
+  # exists are refused, not read as "no considerations" or as a bare count.
+  mkdir -p "$tmp/p_dir"
+  cp "$tmp/p_list.txt" "$tmp/p_dir/2"
+  assert_eq "failon: an empty considerations argument is a usage error (exit 2)" "2" "$(rc_of bash "$XFORM" failon critical "$tmp/v_missing.json" "")"
+  assert_eq "suppress: an empty considerations argument is a usage error (exit 2)" "2" "$(rc_of bash "$XFORM" suppress "$tmp/s_base.json" "$tmp/s_legacy.json" "")"
+  assert_eq "failon: the word null is not a way to omit the considerations (exit 2)" "2" "$(cd "$tmp/p_dir" && rc_of bash "$XFORM" failon critical "$tmp/v_missing.json" null)"
+  assert_eq "failon: a count that also names a file is refused (exit 2)" "2" "$(cd "$tmp/p_dir" && rc_of bash "$XFORM" failon critical "$tmp/p_dup.json" 2)"
+  assert_eq "failon: the same file passed as a path gets the position check" "1" "$(cd "$tmp/p_dir" && rc_of bash "$XFORM" failon critical "$tmp/p_dup.json" ./2)"
+
+  # ---- guard self-test ----------------------------------------------------
+  # Each guard is removed from a copy of the script, and the input it exists
+  # for must then get through. This proves the assertions above bite: deleting
+  # a guard from sarif_transform.sh fails them rather than passing unnoticed.
+  # mutant <name> <sed-script> — writes $tmp/<name>.sh; fails if nothing changed.
+  mutant() {
+    sed "$2" "$XFORM" > "$tmp/$1.sh"
+    if cmp -s "$XFORM" "$tmp/$1.sh"; then not_ok "guard self-test: the $1 mutation took effect" "sed changed nothing"
+    else ok "guard self-test: the $1 mutation took effect"; fi
+  }
+  mutant no-one-document '/^  one_document "\$input"$/d'
+  assert_eq "guard self-test: without one_document, suppress passes two documents" "0" \
+    "$(rc_of bash "$tmp/no-one-document.sh" suppress "$tmp/s_bad_base.json" "$tmp/d_two.json" 1)"
+  mutant no-input-guards '/^  one_document "\$input"$/d; /failon could not compute N_GATE/d'
+  assert_eq "guard self-test: without both input guards, failon passes an empty file" "0" \
+    "$(rc_of bash "$tmp/no-input-guards.sh" failon critical "$tmp/d_empty.json" 1)"
+  mutant no-position-check 's/^       elif misplaced then 1$/       elif false then 1/'
+  assert_eq "guard self-test: without the position check, failon passes a repeated verdict" "0" \
+    "$(rc_of bash "$tmp/no-position-check.sh" failon critical "$tmp/p_dup.json" "$tmp/p_list.txt")"
 
   # ---- corruption self-test ----------------------------------------------
   # A deliberately corrupted golden MUST be detected (assert_golden returns

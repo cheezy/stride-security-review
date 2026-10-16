@@ -460,6 +460,29 @@ is never merely recorded at `important` or above. The mapping must not weaken it
 - `.github/workflows/security-review.yml` is unchanged: it never passes
   `--considerations`. The README says how to extend its `jq` gate if yours does.
 
+**Two guards from the opencode port (landed, unreleased).** opencode's W2279
+port, W2375 (`684610c`), added two guards this repo lacked, and both are now
+here:
+- Verdict *i* must answer consideration *i*: its `consideration` is the *i*-th
+  resolved consideration verbatim, or the redaction sentinel at that position.
+  Step 4's fail-closed rule, Step 4.5's parse check and Step 6's malformed
+  bullet each say so, so a same-length array that repeats one verdict and
+  drops another fails. Given the resolved considerations as a file instead of a
+  count, `failon` and `suppress` check every position; a count checks only how
+  many entries there are.
+- `failon` and `suppress` exit 2 unless their input is exactly one JSON object;
+  behind that, `failon` refuses a count that is not a bare integer. An empty
+  file or two documents run together used to read as a count of zero and pass
+  the gate.
+
+This repo also added refusals that `684610c` lacks: an empty third argument,
+an all-digit one that also names a file (which the file form would otherwise
+read as a count, skipping the position check), and a document whose `findings`
+is present but not an array, `null` included; each exits 2, and the word `null`
+no longer omits the third argument. `run_transform_tests.sh` locks all of this,
+and deletes the one-document, integer and position guards from copies of the
+script to show its cases catch them; `check_agent_contract.sh` pins the prose.
+
 **Per variant.**
 - gemini (`commands/security-review.toml`) and opencode
   (`commands/security-review.md`) carry the command.
@@ -470,6 +493,9 @@ is never merely recorded at `important` or above. The mapping must not weaken it
   say so in its changelog.
 - The agent half (an `rci_pass` with a list is a considerations pass; evidence
   names the backing finding) ports to every variant's agent, copilot included.
+- The two guards above go with the command and with `lib/sarif_transform.sh`.
+  opencode carries both since `684610c` but owes the extra refusals.
+  gemini and codex, which have not ported W2279, port all of it with W2279.
 
 The command had no recorded use, so this ports last.
 

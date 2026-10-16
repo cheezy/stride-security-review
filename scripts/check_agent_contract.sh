@@ -2,8 +2,10 @@
 # Text pins on agents/security-reviewer.md's SECURITY_RESULT_PATH contract (W2284),
 # its considerations-mode rules (W2275), its read-only tool contract (W2276) and
 # its one mode-tag spelling (W2278), its probe sandbox (D376, D378), its neutralised git forms (D377) and its considerations-mode tool budget
-# (W2282), plus the tag and flag in the command and skill, and the shape,
-# size and triggers of the agent and skill frontmatter (W2286).
+# (W2282), plus the tag and flag in the command and skill, the command's
+# out-of-position verdict rule and one-document transform input (ported back
+# from the OpenCode port's W2375), and the shape, size and triggers of the agent
+# and skill frontmatter (W2286).
 # The agent's behaviour is a prose contract read by a model, so the cheapest
 # regression guard is that the load-bearing sentences are still there. Each
 # needle is a fixed string; a reworded rule must update its pin deliberately.
@@ -190,6 +192,16 @@ pin "evidence links a verdict to its finding" 'which is how the caller links the
 pin_in "$COMMAND" "every rci pass re-sends the directives"  'The same directives Step 4 sent for this input, in the same order and verbatim, on every pass.'
 pin_in "$COMMAND" "an unmitigated verdict trips the gate"    'An `unmitigated` verdict trips the gate at every threshold'
 pin_in "$COMMAND" "baseline keeps backing findings"          'Baseline suppression never drops a finding that backs a verdict'
+
+# Ported back from the OpenCode port's W2375 (684610c): verdict i must answer
+# consideration i, in Step 4's definition and in the Step 4.5 and Step 6 checks
+# that repeat it, and the reference transform reads exactly one findings
+# document. Each site has its own needle, so dropping the rule from any one of
+# them fails. run_transform_tests.sh proves the script's guards bite.
+pin_in "$COMMAND" "Step 4 checks each verdict's position"   'one whose `consideration` is not the resolved consideration with the same index'
+pin_in "$COMMAND" "Step 4.5 checks each verdict's position" 'answers a consideration out of position (an entry whose `consideration` is neither the resolved consideration at that index nor the redaction sentinel)'
+pin_in "$COMMAND" "Step 6 gates an out-of-position verdict" 'neither the resolved consideration at that position nor the redaction sentinel'
+pin_in "$COMMAND" "the transform reads one document"        'Both modes take exactly one findings document, a single JSON object, and exit 2 on anything else'
 
 # W2282: a considerations-mode tool budget, justified wider reads, claim-bound
 # reproductions, and the one unbacked partial a reached budget yields. The
