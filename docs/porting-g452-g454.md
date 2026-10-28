@@ -76,7 +76,7 @@ checkout. Re-check a cell before relying on it.
 | Variant | Version | Agent file | Agent tools (frontmatter) | Turn bound | Command entry point | Eval / CI |
 |---|---|---|---|---|---|---|
 | `stride-security-review` (Claude Code) | v2.5.2 | `agents/security-reviewer.md`, 74,441 B | `Read, Grep, Glob, Bash`; `model: inherit` | none | `commands/security-review.md` | `scripts/run_eval.sh`, `.github/workflows/eval.yml`, `test/fixtures/` (64 entries) |
-| `stride-gemini-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,442 B | `read_file, grep_search, glob, run_shell_command` | **`max_turns: 10`, which the runtime enforces** | `commands/security-review.toml` | no eval script or CI workflow found; `fixtures/` (65 entries) |
+| `stride-gemini-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,442 B | `read_file, grep_search, glob, run_shell_command` | **`max_turns: 10`, which the runtime enforces** | `commands/security-review.toml` | `lib/run_eval.sh`, which piped a role-play prompt to `gemini -p`; no CI workflow; `fixtures/` (65 entries) |
 | `stride-opencode-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,452 B | `read, grep, glob, bash: true`, **`write: false`, `edit: false`** | none found | `commands/security-review.md` | `lib/run_eval.sh`, which runs `opencode run --agent security-reviewer`; no CI workflow; `fixtures/` (65 entries) |
 | `stride-copilot-security-review` | v0.4.2 | `agents/security-reviewer.agent.md`, 72,935 B | `["read", "search", "glob", "run"]` | none found | none found; the skill is `security-review-essentials` | `scripts/run_eval.sh`, which per its own header (lines 6–7) still calls `claude -p`; `.github/workflows/eval.yml`; `test/fixtures/` (62 entries) |
 | `stride-codex-security-review` | v0.1.2 | `agents/security-reviewer.md`, 74,370 B | `["read", "search", "glob", "shell"]` | none found | `skills/stride-security-review/SKILL.md` | no eval script or CI workflow found; `fixtures/` (65 entries) |
@@ -86,6 +86,14 @@ v0.1.1 the agent's frontmatter already set `write: false` beside `edit: false` a
 enabled `grep` and `glob`, and `lib/run_eval.sh` already existed. Check both with
 `git -C stride-opencode-security-review show v0.1.1:agents/security-reviewer.md` and
 `git -C stride-opencode-security-review show v0.1.1:lib/run_eval.sh`.
+
+The gemini row's Eval / CI cell was corrected on 2026-10-27. `lib/run_eval.sh`
+was already in v0.1.1. It sent each fixture to `gemini -p 'Act as the
+security-reviewer agent defined in this extension…'`, which the main model
+answered, never selecting the extension's subagent. Check with
+`git -C stride-gemini-security-review show v0.1.1:lib/run_eval.sh`. The row's other
+cells are still v0.1.1's. *The gemini port, as of 2026-10-27* below gives the
+current state.
 
 What this table decides:
 
@@ -97,13 +105,17 @@ What this table decides:
   - opencode already sets `write: false` and `edit: false`, but a shell can still
     write files.
   - gemini's `max_turns: 10` already bounds a dispatch hard; check whether W2282's
-    budget makes it redundant there or whether 10 is too tight.
-- **Only Claude Code and copilot have an eval harness and CI.** opencode has an eval
-  runner but no CI.
+    budget makes it redundant there or whether 10 is too tight. (Resolved in the
+    gemini port's W2493: 10 was too tight. It became `max_turns: 24` and
+    `timeout_mins: 16`, and W2482 later raised `max_turns` to 26.)
+- **Only Claude Code and copilot have an eval harness and CI.** opencode and gemini
+  have an eval runner but no CI.
   - The copilot eval invokes `claude -p` according to its own comment, so it may
     not test the Copilot agent at all. Verify that before porting W2274.
-  - gemini and codex have fixtures but no eval runner. W2274 there means building
-    one, or recording that the variant is unevaluated. opencode's `lib/run_eval.sh`
+  - codex has fixtures but no eval runner. W2274 there means building one, or
+    recording that the variant is unevaluated. gemini's `lib/run_eval.sh` scored
+    the main model rather than the extension's subagent, so W2274 there was a fix
+    to the existing runner (the gemini port's W2486). opencode's `lib/run_eval.sh`
     pipes each prompt into `opencode run --agent security-reviewer`, so W2274 there
     is a fix to the existing runner. At v0.1.1 that runner scored OpenCode's default
     agent, because `opencode run --agent` replaces a `mode: subagent` agent with it.
@@ -124,9 +136,9 @@ and W2284's consumer half. `stride` keeps the deep sub-step in
 ### The opencode port, as of 2026-10-16
 
 `stride-opencode-security-review` has ported this batch in tasks W2371 to W2380,
-W2383, W2386 and W2387. None of it is released yet: its newest tag is still
-`v0.1.1`, and W2389 wrote the `[Unreleased]` notes without a version. That
-repository's `CHANGELOG.md` `[Unreleased]` entry names, for each upstream change,
+W2383, W2386 and W2387. It was released as `v0.2.0` (`52e4af7`, 2026-10-16) after
+this section was written, from the notes W2389 wrote under `[Unreleased]`. That
+repository's `CHANGELOG.md` `[0.2.0]` entry names, for each upstream change,
 the task that ported it and what was adapted. This section was refreshed from
 that repository's git log at `d6cadda`.
 
@@ -181,6 +193,38 @@ that repository's git log at `d6cadda`.
   but failed its hand check again: the agent echoed the consideration verbatim
   instead of the redaction sentinel, in 3 of 3 runs so far. The port's Step 4.7
   redactor is the deterministic cover for credential-shaped text.
+
+### The gemini port, as of 2026-10-27
+
+`stride-gemini-security-review` ported this batch in tasks W2480 to W2493 (goals
+G482–G484) and released it as `v0.2.0` (`3961918`, 2026-10-27). Its
+`CHANGELOG.md` `[0.2.0]` entry names, for each upstream change, the task that
+ported it and what was adapted. It claims parity with this repo at 2.7.2
+(`fd58c62`).
+
+- **Ported:** W2274, W2275, W2276 with D376, W2278's plugin half, W2279 with
+  `6ca7233`, W2282, W2284's plugin half, W2285, W2286, D377 and D378. W2480 also
+  fixed a template error that stopped Gemini CLI 0.65.0 loading the v0.1.1 agent
+  at all: the CLI templates `${word}` placeholders in a subagent's body, and two
+  JavaScript examples carried `${url}` and `${id}`.
+- **Adapted for Gemini CLI:**
+  - The result file goes through `write_file`. `run_shell_command` refuses a
+    command carrying `$(` or a backtick, so the `mktemp` heredoc cannot run there.
+  - Frontmatter cannot scope the shell. A deny-only
+    `policies/security-reviewer.toml`, scoped to the subagent, backs the
+    written read-only contract.
+  - The core reads its packs and modes from `${extensionPath}`.
+  - W2282's budget is reconciled with `max_turns: 26` and `timeout_mins: 16`.
+- **Not verified live.** Gemini CLI was not installed where the port was made.
+  Every check behind the release is offline, or was read from the
+  `@google/gemini-cli-core` 0.65.0 source. The one exception is W2482's pack
+  reads, which ran in the 0.65.0 bundle with a scripted model. The port's
+  changelog lists each check still owed under *Not verified in a live Gemini CLI
+  session*. That includes the policy's deny, by default and under `--yolo`.
+- **Not applicable**, recorded under *Not applicable to Gemini* in that
+  changelog: W2288, because the extension has no `plugin.json`; every
+  `.github/workflows/eval.yml` change, because it has no CI; W2287's measurement;
+  and the `stride`-side halves, which port to `stride-gemini`.
 
 ---
 
