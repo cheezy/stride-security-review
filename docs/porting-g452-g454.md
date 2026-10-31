@@ -78,7 +78,7 @@ checkout. Re-check a cell before relying on it.
 | `stride-security-review` (Claude Code) | v2.5.2 | `agents/security-reviewer.md`, 74,441 B | `Read, Grep, Glob, Bash`; `model: inherit` | none | `commands/security-review.md` | `scripts/run_eval.sh`, `.github/workflows/eval.yml`, `test/fixtures/` (64 entries) |
 | `stride-gemini-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,442 B | `read_file, grep_search, glob, run_shell_command` | **`max_turns: 10`, which the runtime enforces** | `commands/security-review.toml` | `lib/run_eval.sh`, which piped a role-play prompt to `gemini -p`; no CI workflow; `fixtures/` (65 entries) |
 | `stride-opencode-security-review` | v0.1.1 | `agents/security-reviewer.md`, 74,452 B | `read, grep, glob, bash: true`, **`write: false`, `edit: false`** | none found | `commands/security-review.md` | `lib/run_eval.sh`, which runs `opencode run --agent security-reviewer`; no CI workflow; `fixtures/` (65 entries) |
-| `stride-copilot-security-review` | v0.4.2 | `agents/security-reviewer.agent.md`, 72,935 B | `["read", "search", "glob", "run"]` | none found | none found; the skill is `security-review-essentials` | `scripts/run_eval.sh`, which per its own header (lines 6–7) still calls `claude -p`; `.github/workflows/eval.yml`; `test/fixtures/` (62 entries) |
+| `stride-copilot-security-review` | v0.4.2 | `agents/security-reviewer.agent.md`, 72,935 B | `["read", "search", "glob", "run"]`; `run` is not a Copilot tool name (see below) | none found | no command file; the `security-review-essentials` skill carries the `/security-review` pipeline | `scripts/run_eval.sh`, which per its own header (lines 6–7) still calls `claude -p`; `.github/workflows/eval.yml`; `test/fixtures/` (62 entries) |
 | `stride-codex-security-review` | v0.1.2 | `agents/security-reviewer.md`, 74,370 B | `["read", "search", "glob", "shell"]` | none found | `skills/stride-security-review/SKILL.md` | no eval script or CI workflow found; `fixtures/` (65 entries) |
 
 The opencode row's tools and Eval / CI cells were corrected on 2026-10-16. At
@@ -94,6 +94,18 @@ answered, never selecting the extension's subagent. Check with
 `git -C stride-gemini-security-review show v0.1.1:lib/run_eval.sh`. The row's other
 cells are still v0.1.1's. *The gemini port, as of 2026-10-27* below gives the
 current state.
+
+The copilot row's Agent tools and Command entry point cells were corrected on
+2026-10-30. GitHub's custom agents configuration reference gives `execute` as the
+shell tool (with `shell`, `Bash` and `powershell` as compatible names), does not
+list `run`, and ignores names it does not recognise, so at v0.4.2 the reviewer may
+have held no shell at all. The Copilot alias for the shell tool is `execute`. The
+variant has no command file, but its `security-review-essentials` skill already
+carried the whole `/security-review` pipeline (Steps 1 to 6), so the command-side
+fixes apply there. Check with
+`git -C stride-copilot-security-review show v0.4.2:skills/security-review-essentials/SKILL.md`.
+The row's other cells are still v0.4.2's. *The copilot port, as of 2026-10-30*
+below gives the current state.
 
 What this table decides:
 
@@ -112,6 +124,9 @@ What this table decides:
   have an eval runner but no CI.
   - The copilot eval invokes `claude -p` according to its own comment, so it may
     not test the Copilot agent at all. Verify that before porting W2274.
+    (Resolved in the copilot port's W2570: the v0.4.2 runner did call `claude -p`.
+    It now dispatches the plugin's agent through Copilot CLI with `--plugin-dir`
+    and `--agent security-reviewer`, and has not been run against a live CLI.)
   - codex has fixtures but no eval runner. W2274 there means building one, or
     recording that the variant is unevaluated. gemini's `lib/run_eval.sh` scored
     the main model rather than the extension's subagent, so W2274 there was a fix
@@ -226,6 +241,53 @@ ported it and what was adapted. It claims parity with this repo at 2.7.2
   `.github/workflows/eval.yml` change, because it has no CI; W2287's measurement;
   and the `stride`-side halves, which port to `stride-gemini`.
 
+### The copilot port, as of 2026-10-30
+
+`stride-copilot-security-review` ported this batch in tasks W2564 to W2568 and
+W2570 to W2576, and W2569 folded their notes into one `CHANGELOG.md` entry,
+`[0.5.0]`, with `plugin.json` bumped to 0.5.0. The entry has a porting map that
+names, for each upstream change, the task that ported it and what was adapted. It
+claims parity with this repo at 2.7.2 (`fd58c62`). The release is prepared but not
+tagged: v0.4.2 is still the newest tag, and syncing `stride-copilot-marketplace`
+is the user's step (see *Releasing a variant*).
+
+- **Ported:** W2274, W2275, W2276 with D376 and D378, W2278's plugin half, W2279
+  with `6ca7233`, W2282, W2284's plugin half, W2285, W2286, D377, and **W2288,
+  which applies here**: `plugin.json` sits at the repo root, and its description
+  is now 291 characters. W2564 also renamed the shell tool from `run` to
+  `execute`, the Copilot alias.
+- **Adapted for Copilot CLI:**
+  - The tools are `read`, `search`, `glob` and `execute`. Frontmatter cannot scope
+    `execute`, so the written read-only contract is its only limit.
+  - Copilot caps an agent's prompt at 30,000 characters and gives an agent body no
+    plugin-root path. So the core reads no rule file: the skill reads the eleven
+    packs and three mode files from its own directory and sends them in keyed
+    blocks, and the contract check pins the body under 30,000 characters.
+  - W2279 lives in the skill as prose. There is no `sarif_transform.sh`, so those
+    rules have no executable check.
+  - The result file is one `execute` heredoc write, made only when the caller
+    sends `modes/result-file.md` with `SECURITY_RESULT_PATH`. The skill never
+    sends it, so a direct caller such as `stride-copilot` must.
+  - W2282's 20-call budget is counted by the agent itself, since Copilot sets no
+    turn limit.
+  - `scripts/run_eval.sh` denies the agent's tools and sends no rule files, so it
+    scores the core alone.
+- **Not verified live.** Copilot CLI was not installed where the port was made.
+  Every check behind the release is offline (`bash scripts/test-all.sh`) or read
+  from GitHub's documentation. The eval has not been run, its *Recorded runs*
+  table is empty, and CI installs Copilot CLI with no version pin. The port's
+  changelog lists each check still owed under *Not verified in a live Copilot
+  CLI*.
+- **Not applicable**, recorded under *Not applicable to Copilot* in that
+  changelog: W2287's measurement; upstream's Claude Code eval flags and W2276's
+  eval overrides; D377's core-ceiling rise; and the `stride`-side halves, which
+  port to `stride-copilot`. Its considerations-mode deep review must send the
+  `/security-review invocation, mode: considerations` tag, `modes/considerations.md`
+  in a keyed rule-file block, and `modes/result-file.md` with
+  `SECURITY_RESULT_PATH`, and expect `partial` verdicts whose note begins
+  `budget reached:`. At `stride-copilot` `bd2702f` its skills send neither the tag
+  nor the path.
+
 ---
 
 ## G452 — accuracy
@@ -241,7 +303,7 @@ ever been ticked.
 **Per variant.**
 - **copilot:** its eval and CI exist, but its runner calls `claude -p`. Point it at
   the Copilot CLI with the plugin's own agent, or record that it evaluates the
-  Claude Code prompt.
+  Claude Code prompt. (Done in the copilot port's W2570; not yet run live.)
 - **gemini, codex:** build a runner around their own CLI, or say plainly in the
   README that the variant is not evaluated.
 - **opencode:** fix the existing `lib/run_eval.sh` so that it scores the bundle's
@@ -316,7 +378,8 @@ vocabulary:
 
 - gemini: `run_shell_command`
 - opencode: `bash`
-- copilot: `run`
+- copilot: `execute` (v0.4.2 named `run`, which Copilot's custom agents
+  reference does not list; the copilot port's W2564 renamed it)
 - codex: `shell`
 
 Dropping the shell must be decided per variant from that variant's own evidence.
@@ -569,7 +632,10 @@ script to show its cases catch them; `check_agent_contract.sh` pins the prose.
 - gemini (`commands/security-review.toml`) and opencode
   (`commands/security-review.md`) carry the command.
 - codex carries it as the skill `stride-security-review`.
-- copilot has no command entry point, so the fix does not apply there. Record that.
+- copilot has no command file, but its `security-review-essentials` skill carries
+  the `/security-review` pipeline, so the fix applies there too. The copilot
+  port's W2575 carries it as prose in the skill; that variant has no
+  `sarif_transform.sh`.
 - The backing definition, the verdict gate and the baseline rule port as prose.
   A variant with no `sarif_transform.sh` has no executable check for them;
   say so in its changelog.
